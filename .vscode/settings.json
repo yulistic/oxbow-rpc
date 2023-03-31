@@ -1,0 +1,10 @@
+{
+	"editor.formatOnSave": true,
+	"cSpell.words": [
+		"RDMA"
+	],
+	"files.associations": {
+		"semaphore.h": "c",
+		"netdb.h": "c"
+	}
+}

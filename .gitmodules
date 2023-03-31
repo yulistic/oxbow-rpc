@@ -1,0 +1,6 @@
+[submodule "lib/rdma-core"]
+	path = lib/rdma-core
+	url = https://github.com/linux-rdma/rdma-core.git
+[submodule "lib/log.c"]
+	path = lib/log.c
+	url = https://github.com/yulistic/log.c.git
