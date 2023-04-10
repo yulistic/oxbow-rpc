@@ -27,14 +27,14 @@ rdmacm_dep = dependency('librdmacm', method : 'pkg-config', static : false)
 log_inc = include_directories('lib/log.c/src')
 
 ## C-Thread-Pool library.
-# thpool_inc = include_directories('lib/C-Thread-Pool')
+thpool_inc = include_directories('lib/c-thread-pool')
 
 ## DevFS source code headers.
 inc = include_directories('include')
 
 ## Source files.
 oxbow_rpc_lib_srcs = [ \
-# 'lib/C-Thread-Pool/thpool.c',
+'lib/c-thread-pool/thpool.c',
 'lib/log.c/src/log.c',
 'src/rpc_server.c',
 'src/rpc_client.c',
@@ -45,7 +45,7 @@ oxbow_rpc_lib = shared_library('oxbow_rpc',
                           oxbow_rpc_lib_srcs,
                           # version : '1.1.1',
                           # soversion : '0',
-                          include_directories : [inc, log_inc, rdma_inc],
+                          include_directories : [inc, log_inc, thpool_inc, rdma_inc],
                           dependencies : [ibverbs_dep, rdmacm_dep], # Shared library
                           c_args: ['-DLOG_USE_COLOR'], # Print with color by log.c library.
                           # link_args : ['-Wl,-rpath=' + rdma_lib_dir],
