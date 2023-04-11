@@ -3,7 +3,10 @@
 
 #include <semaphore.h>
 #include <stdint.h>
+#include <pthread.h>
+#include "log.h"
 #include "thpool.h"
+#include "bit_array.h"
 
 #define RPC_MSG_BUF_NUM                                                        \
 	1 // The number of msg buffers per connection. Only 1 supported, for now.
@@ -15,21 +18,44 @@ enum rpc_channel_type {
 	// SHMEM
 };
 
+struct rpc_ch_info {
+	enum rpc_channel_type ch_type;
+	void *ch_cb; // Channel control block.
+	BIT_ARRAY *msgbuf_bitmap;
+	pthread_spinlock_t msgbuf_bitmap_lock;
+};
+
+// Call graph of callback functions:
+// CQ event ->
+// rpc_msg_handler_cb() (rpc layer) ->
+// msg_handler() (user defined) ->
+
+// Parameter for rpc layer's msg handler callback.
+struct rpc_msg_handler_param {
+	int msgbuf_id;
+	struct rpc_ch_info *client_rpc_ch;
+	struct msg_handler_param *param; // Passed to user's msg handler callback.
+	void (*msg_handler_cb)(void *param); // user's msg handler callback func.
+};
+
+// Parameter for user's msg handler callback.
 struct msg_handler_param {
+	int msgbuf_id;
 	void *ch_cb;
 	struct rpc_msg *msg;
 };
 
-// It stores identical data with struct rdma_msg but in little endian order.
-struct __attribute__((packed)) rpc_msg {
+struct __attribute__((packed)) rpc_msg_header {
 	uint64_t seqn;
+	struct rpc_ch_info *
+		client_rpc_ch; // Client's address should be delivered through server's response.
 	sem_t *sem; // Client's semaphore address.
-	char data[]; // Flexible array.
 };
 
-struct rpc_ch_info {
-	enum rpc_channel_type ch_type;
-	void *ch_cb; // Channel control block.
+// It stores identical data with struct rdma_msg but in little endian order.
+struct __attribute__((packed)) rpc_msg {
+	struct rpc_msg_header header;
+	char data[]; // Flexible array.
 };
 
 /**
@@ -58,7 +84,12 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type,
 				    void (*msg_handler)(void *data),
 				    threadpool worker_thpool);
 
-void send_rpc_msg(struct rpc_ch_info *rpc_ch, char *data, sem_t *sem);
+void send_rpc_msg_to_server(struct rpc_ch_info *rpc_ch, char *data, sem_t *sem);
+void send_rpc_response_to_client(struct rpc_ch_info *rpc_ch,
+				 void *client_rpc_ch_addr, char *data,
+				 sem_t *sem, int msgbuf_id);
 void destroy_rpc_client(struct rpc_ch_info *rpc_ch);
 
+uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch);
+void free_msgbuf_id(struct rpc_ch_info *rpc_ch, uint64_t bit_id);
 #endif

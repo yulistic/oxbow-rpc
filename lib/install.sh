@@ -5,3 +5,9 @@ sudo apt install build-essential cmake gcc libudev-dev libnl-3-dev libnl-route-3
 	cd rdma-core || exit
 	./build.sh
 )
+
+# BitArray library.
+(
+	cd BitArray || exit
+	make
+)

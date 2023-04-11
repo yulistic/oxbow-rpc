@@ -7,3 +7,6 @@
 [submodule "lib/c-thread-pool"]
 	path = lib/c-thread-pool
 	url = git@github.com:casys-kaist-internal/oxbow_c-thread-pool.code.git
+[submodule "lib/BitArray"]
+	path = lib/BitArray
+	url = https://github.com/noporpoise/BitArray.git

@@ -284,7 +284,6 @@ err1:
 	return ret;
 }
 
-// TODO: Check WR.
 static void setup_wr(struct rdma_ch_cb *cb)
 {
 	struct msgbuf_ctx *mb_ctx;
@@ -396,7 +395,6 @@ static int alloc_msg_buffers(struct rdma_ch_cb *cb)
 
 // }
 
-// TODO: Check buffers. Pass MR region info.
 static int setup_buffers(struct rdma_ch_cb *cb)
 {
 	int ret, i;
@@ -433,25 +431,6 @@ static int setup_buffers(struct rdma_ch_cb *cb)
 		}
 	}
 
-	// if (!cb->server) {
-	// 	cb->start_buf = malloc(cb->size);
-	// 	if (!cb->start_buf) {
-	// 		fprintf(stderr, "start_buf malloc failed\n");
-	// 		ret = -ENOMEM;
-	// 		goto err4;
-	// 	}
-
-	// 	cb->start_mr = ibv_reg_mr(cb->pd, cb->start_buf, cb->size,
-	// 				  IBV_ACCESS_LOCAL_WRITE |
-	// 					  IBV_ACCESS_REMOTE_READ |
-	// 					  IBV_ACCESS_REMOTE_WRITE);
-	// 	if (!cb->start_mr) {
-	// 		fprintf(stderr, "start_buf reg_mr failed\n");
-	// 		ret = errno;
-	// 		goto err5;
-	// 	}
-	// }
-
 	setup_wr(cb);
 	log_debug("allocated & registered buffers...");
 	return 0;
@@ -475,11 +454,20 @@ err2:
 	return ret;
 }
 
+/**
+ * @brief Copy the message and invoke a worker thread.
+ * 
+ * @param cb 
+ * @param wc 
+ * @return int 
+ */
 static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 {
 	struct msgbuf_ctx *mb_ctx;
+	struct rpc_msg_handler_param *rpc_param;
 	struct msg_handler_param *param;
 	struct rpc_msg *msg;
+	int msgbuf_id;
 
 	// Check the size of received data.
 	if (wc->byte_len != (uint32_t)cb->msgbuf_size) {
@@ -487,26 +475,40 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 		return -1;
 	}
 
-	// To be freed, in the handler callback function.
+	// These are freed in the handler callback function.
+	rpc_param = calloc(1, sizeof *rpc_param);
 	param = calloc(1, sizeof *param);
 	msg = calloc(1, cb->msgbuf_size);
 
-	mb_ctx = &cb->buf_ctxs[wc->wr_id];
+	msgbuf_id = wc->wr_id;
 
-	msg->seqn = be64toh(mb_ctx->recv_buf->seq_num);
-	msg->sem = (sem_t *)be64toh(mb_ctx->recv_buf->sem_addr);
+	mb_ctx = &cb->buf_ctxs[msgbuf_id];
+
+	msg->header.seqn = be64toh(mb_ctx->recv_buf->seq_num);
+	msg->header.sem = (sem_t *)be64toh(mb_ctx->recv_buf->sem_addr);
+	msg->header.client_rpc_ch =
+		(struct rpc_ch_info *)be64toh(mb_ctx->recv_buf->rpc_ch_addr);
 	// Copy fixed size, currently.
 	strncpy(&msg->data[0], &mb_ctx->recv_buf->data[0], cb->msgdata_size);
 
+	param->msgbuf_id = msgbuf_id;
 	param->ch_cb = (struct rdma_ch_cb *)cb;
 	param->msg = msg;
 
-	log_debug("Received seqn=%lu data=%s sem_addr=0x%lx", msg->seqn,
-		  msg->data, (uint64_t)msg->sem);
+	rpc_param->msgbuf_id = msgbuf_id;
+	rpc_param->client_rpc_ch =
+		(struct rpc_ch_info *)be64toh(mb_ctx->recv_buf->rpc_ch_addr);
+	rpc_param->param = param;
+	rpc_param->msg_handler_cb = cb->msg_handler_cb;
+
+	log_debug(
+		"Received msgbuf_id=%d seqn=%lu data=%s rpc_ch_addr=0x%lx sem_addr=0x%lx",
+		msgbuf_id, msg->header.seqn, msg->data,
+		(uint64_t)rpc_param->client_rpc_ch, (uint64_t)msg->header.sem);
 
 	// Execute RPC callback function in a worker thread.
-	thpool_add_work(cb->msg_handler_thpool, cb->msg_handler_cb,
-			(void *)param);
+	thpool_add_work(cb->msg_handler_thpool, cb->rpc_msg_handler_cb,
+			(void *)rpc_param);
 
 	// cb->remote_rkey = be32toh(cb->recv_buf.rkey);
 	// cb->remote_addr = be64toh(cb->recv_buf.buf);
@@ -520,24 +522,6 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 
 	return 0;
 }
-
-// static int client_recv(struct rdma_ch_cb *cb, struct ibv_wc *wc)
-// {
-// 	if (wc->byte_len != (uint32_t)cb->msgbuf_size) {
-// 		fprintf(stderr, "Received bogus data, size %d\n", wc->byte_len);
-// 		return -1;
-// 	}
-
-// 	// TODO: Wake up the sleeping thread.
-// 	printf("Client received.\n");
-
-// 	// if (cb->state == RDMA_READ_ADV)
-// 	// 	cb->state = RDMA_WRITE_ADV;
-// 	// else
-// 	// 	cb->state = RDMA_WRITE_COMPLETE;
-
-// 	return 0;
-// }
 
 static int cq_event_handler(struct rdma_ch_cb *cb)
 {
@@ -568,13 +552,13 @@ static int cq_event_handler(struct rdma_ch_cb *cb)
 		case IBV_WC_RDMA_WRITE:
 			log_debug("rdma write completion");
 			// cb->state = RDMA_WRITE_COMPLETE;
-			sem_post(&cb->sem);
+			// sem_post(&cb->sem);
 			break;
 
 		case IBV_WC_RDMA_READ:
 			log_debug("rdma read completion");
 			// cb->state = RDMA_READ_COMPLETE;
-			sem_post(&cb->sem);
+			// sem_post(&cb->sem);
 			break;
 
 		case IBV_WC_RECV:
@@ -592,7 +576,7 @@ static int cq_event_handler(struct rdma_ch_cb *cb)
 				log_error("post recv error: ret=%d", ret);
 				goto error;
 			}
-			sem_post(&cb->sem);
+			// sem_post(&cb->sem);
 			break;
 
 		default:
@@ -708,109 +692,6 @@ static void free_cb(struct rdma_ch_cb *cb)
 	log_debug("free cb=%lx", cb);
 	free(cb);
 }
-
-// TODO: Implement server logic.
-//static int handle_request(struct rdma_ch_cb *cb)
-//{
-//	struct ibv_send_wr *bad_wr;
-//	int ret;
-//
-//	while (1) {
-//		/* Wait for client's Start STAG/TO/Len */
-//		sem_wait(&cb->sem);
-//		if (cb->state != RDMA_READ_ADV) {
-//			fprintf(stderr, "wait for RDMA_READ_ADV state %d\n",
-//				cb->state);
-//			ret = -1;
-//			break;
-//		}
-//
-//		log_debug("server received sink adv");
-//
-//		/* Issue RDMA Read. */
-//		cb->rdma_sq_wr.opcode = IBV_WR_RDMA_READ;
-//		cb->rdma_sq_wr.wr.rdma.rkey = cb->remote_rkey;
-//		cb->rdma_sq_wr.wr.rdma.remote_addr = cb->remote_addr;
-//		cb->rdma_sq_wr.sg_list->length = cb->remote_len;
-//
-//		ret = ibv_post_send(cb->qp, &cb->rdma_sq_wr, &bad_wr);
-//		if (ret) {
-//			fprintf(stderr, "post send error %d\n", ret);
-//			break;
-//		}
-//		log_debug("server posted rdma read req");
-//
-//		/* Wait for read completion */
-//		sem_wait(&cb->sem);
-//		if (cb->state != RDMA_READ_COMPLETE) {
-//			fprintf(stderr,
-//				"wait for RDMA_READ_COMPLETE state %d\n",
-//				cb->state);
-//			ret = -1;
-//			break;
-//		}
-//		log_debug("server received read complete");
-//
-//		/* Display data in recv buf */
-//		if (cb->verbose)
-//			printf("server ping data: %s\n", cb->rdma_buf);
-//
-//		/* Tell client to continue */
-//		ret = ibv_post_send(cb->qp, &cb->sq_wr, &bad_wr);
-//		if (ret) {
-//			fprintf(stderr, "post send error %d\n", ret);
-//			break;
-//		}
-//		log_debug("server posted go ahead");
-//
-//		/* Wait for client's RDMA STAG/TO/Len */
-//		sem_wait(&cb->sem);
-//		if (cb->state != RDMA_WRITE_ADV) {
-//			fprintf(stderr, "wait for RDMA_WRITE_ADV state %d\n",
-//				cb->state);
-//			ret = -1;
-//			break;
-//		}
-//		log_debug("server received sink adv");
-//
-//		/* RDMA Write echo data */
-//		cb->rdma_sq_wr.opcode = IBV_WR_RDMA_WRITE;
-//		cb->rdma_sq_wr.wr.rdma.rkey = cb->remote_rkey;
-//		cb->rdma_sq_wr.wr.rdma.remote_addr = cb->remote_addr;
-//		cb->rdma_sq_wr.sg_list->length = strlen(cb->rdma_buf) + 1;
-//		log_debug("rdma write from lkey %x laddr %" PRIx64 " len %d\n",
-//			  cb->rdma_sq_wr.sg_list->lkey,
-//			  cb->rdma_sq_wr.sg_list->addr,
-//			  cb->rdma_sq_wr.sg_list->length);
-//
-//		ret = ibv_post_send(cb->qp, &cb->rdma_sq_wr, &bad_wr);
-//		if (ret) {
-//			fprintf(stderr, "post send error %d\n", ret);
-//			break;
-//		}
-//
-//		/* Wait for completion */
-//		ret = sem_wait(&cb->sem);
-//		if (cb->state != RDMA_WRITE_COMPLETE) {
-//			fprintf(stderr,
-//				"wait for RDMA_WRITE_COMPLETE state %d\n",
-//				cb->state);
-//			ret = -1;
-//			break;
-//		}
-//		log_debug("server rdma write complete");
-//
-//		/* Tell client to begin again */
-//		ret = ibv_post_send(cb->qp, &cb->sq_wr, &bad_wr);
-//		if (ret) {
-//			fprintf(stderr, "post send error %d\n", ret);
-//			break;
-//		}
-//		log_debug("server posted go ahead");
-//	}
-//
-//	return (cb->state == DISCONNECTED) ? 0 : ret;
-//}
 
 static void *server_thread(void *arg)
 {
@@ -942,8 +823,8 @@ err:
 
 	// return -1;
 
-	// sprintf(res, "Failure in run_server(). ret=%d", ret);
-	// pthread_exit(res);
+	sprintf(res, "Failure in run_server(). ret=%d", ret);
+	pthread_exit(res);
 }
 
 static int bind_client(struct rdma_ch_cb *cb)
@@ -1028,7 +909,8 @@ static inline uint64_t alloc_seqn(struct msgbuf_ctx *mb_ctx)
  * @param msgbuf_id 
  * @return int Size of sent data.
  */
-int send_rdma_msg(struct rdma_ch_cb *cb, char *data, sem_t *sem, int msgbuf_id)
+int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
+		  sem_t *sem, int msgbuf_id)
 {
 	struct ibv_send_wr *bad_wr;
 	struct rdma_msg *msg;
@@ -1051,6 +933,7 @@ int send_rdma_msg(struct rdma_ch_cb *cb, char *data, sem_t *sem, int msgbuf_id)
 	msg = mb_ctx->send_buf;
 	msg->seq_num = htobe64(seqn);
 	msg->sem_addr = htobe64((uint64_t)(unsigned long)sem);
+	msg->rpc_ch_addr = htobe64((uint64_t)(unsigned long)rpc_ch_addr);
 
 	// Send fixed size, currently.
 	memset(&msg->data[0], 0, cb->msgdata_size);
@@ -1062,7 +945,9 @@ int send_rdma_msg(struct rdma_ch_cb *cb, char *data, sem_t *sem, int msgbuf_id)
 	// remains = cb->msgdata_size - data_size;
 	// memset(&msg->data[data_size], 0, remains);
 
-	log_info("Sending RDMA msg: seqn=%lu data=\"%s\"", seqn, msg->data);
+	log_info(
+		"Sending RDMA msg: seqn=%lu sem_addr=%lx rpc_ch_addr=%lx data=\"%s\"",
+		seqn, (uint64_t)sem, (uint64_t)rpc_ch_addr, msg->data);
 
 	ret = ibv_post_send(cb->qp, &mb_ctx->sq_wr, &bad_wr);
 	if (ret) {
@@ -1071,6 +956,7 @@ int send_rdma_msg(struct rdma_ch_cb *cb, char *data, sem_t *sem, int msgbuf_id)
 	}
 
 	// Do not wait completion or ack. FIXME: Do we need to wait completion?
+	// A msg buffer is being allocated until the client receives a response (or an ack) from the server.
 
 	return cb->msgbuf_size; // Send fixed size, currently.
 }
@@ -1176,6 +1062,7 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	cb->msgbuf_size = attr->msgbuf_size;
 	cb->msgheader_size = msgheader_size();
 	cb->msgdata_size = msgdata_size(cb->msgbuf_size);
+	cb->rpc_msg_handler_cb = attr->rpc_msg_handler_cb;
 	cb->msg_handler_cb = attr->msg_handler_cb;
 	cb->msg_handler_thpool = attr->msg_handler_thpool;
 

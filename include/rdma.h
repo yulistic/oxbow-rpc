@@ -30,7 +30,9 @@ struct rdma_ch_attr {
 	char ip_addr[16]; // Target server ip addr. (required by client)
 	int msgbuf_cnt; // The number of msg buffers.
 	int msgbuf_size; // The size of a message buffer.
-	void (*msg_handler_cb)(void *data); // msg handler callback function.
+	void (*rpc_msg_handler_cb)(
+		void *rpc_param); // rpc layer callback function.
+	void (*msg_handler_cb)(void *param); // user callback function.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
 };
 
@@ -38,6 +40,7 @@ struct rdma_ch_attr {
 // The size of message (headers + data buffer) == cb->msgbuf_size.
 struct __attribute__((__packed__)) rdma_msg {
 	__be64 seq_num; // sequence number.
+	__be64 rpc_ch_addr; // Client's rpc_ch_info address.
 	__be64 sem_addr; // Client's semaphore address.
 	char data[]; // Data. Flexible array.
 };
@@ -83,12 +86,13 @@ struct rdma_ch_cb {
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
 
-	int msgbuf_cnt;
+	int msgbuf_cnt; // Total number of msg buffers.
 	int msgbuf_size; // A size of a msg buffer including headers.
-	int msgheader_size; // A size of headers in a msg (msg buffer size - data size).
+	int msgheader_size; // A size of a header in a msg (msg buffer size - data size).
 	int msgdata_size; // A size of data in a msg (msg buffer size - header size).
 	struct msgbuf_ctx *buf_ctxs;
-	void (*msg_handler_cb)(void *data); // msg handler callback function.
+	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
+	void (*msg_handler_cb)(void *param); // user's msg handler callback.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
 
 	// TODO: To be deleted. Used by client.
@@ -115,7 +119,8 @@ struct rdma_ch_cb {
 };
 
 struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr);
-int send_rdma_msg(struct rdma_ch_cb *cb, char *data, sem_t *sem, int msgbuf_id);
+int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
+		  sem_t *sem, int msgbuf_id);
 void destroy_rdma_client(struct rdma_ch_cb *cb);
 
 #endif

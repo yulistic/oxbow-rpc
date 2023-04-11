@@ -1,6 +1,6 @@
 test_inc = include_directories('.')
 
-test_inc_dirs = [inc, log_inc, thpool_inc, test_inc, rdma_inc]
+test_inc_dirs = [inc, log_inc, thpool_inc, test_inc, rdma_inc, bitarr_inc]
 
 ## Tests
 rdma_ch_server_test_exe = executable('rdma_ch_server_test', 'rdma_ch_server_test.c', include_directories : test_inc_dirs, link_with : oxbow_rpc_lib)
