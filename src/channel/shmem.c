@@ -56,12 +56,11 @@ static inline void set_evt_arrival_flag(sem_t *sem)
  * @param cb 
  * @param rpc_ch 
  * @param data 
- * @param sem 
  * @param msgbuf_id 
  * @return int 
  */
 int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
-		   char *data, sem_t *sem, int msgbuf_id)
+		   char *data, int msgbuf_id)
 {
 	uint64_t seqn;
 	struct shmem_msgbuf_ctx *mb_ctx;
@@ -80,7 +79,6 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 
 	msg = mb_ctx->req_buf;
 	msg->seq_num = seqn;
-	msg->sem = sem; // TODO: sem does not need to be sent to server.
 	msg->rpc_ch = rpc_ch;
 
 	// Send fixed size, currently.
@@ -90,9 +88,8 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	// Notify server which msgbuf has a new message.
 	mb_ctx->evt->server_evt = 1;
 
-	log_info(
-		"Sending SHMEM msg: seqn=%lu sem_addr=%lx rpc_ch_addr=%lx data=\"%s\"",
-		seqn, (uint64_t)sem, (uint64_t)rpc_ch, msg->data);
+	log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=%lx data=\"%s\"",
+		 seqn, (uint64_t)rpc_ch, msg->data);
 
 	// Post global sem to notify server an event arrived.
 	sem_post(cb->server_cq_sem);
@@ -556,7 +553,6 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 	}
 
 	msg->header.seqn = mb_ctx->req_buf->seq_num;
-	msg->header.sem = mb_ctx->req_buf->sem;
 	msg->header.client_rpc_ch = mb_ctx->req_buf->rpc_ch;
 
 	// Copy fixed size, currently.
@@ -572,10 +568,9 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 	rpc_param->param = param;
 	rpc_param->user_msg_handler_cb = cb->user_msg_handler_cb;
 
-	log_debug(
-		"Received msgbuf_id=%d seqn=%lu data=%s rpc_ch=0x%lx sem=0x%lx",
-		msgbuf_id, msg->header.seqn, msg->data,
-		(uint64_t)rpc_param->client_rpc_ch, (uint64_t)msg->header.sem);
+	log_debug("Received msgbuf_id=%d seqn=%lu data=%s rpc_ch=0x%lx",
+		  msgbuf_id, msg->header.seqn, msg->data,
+		  (uint64_t)rpc_param->client_rpc_ch);
 
 	// Execute RPC callback function in a worker thread.
 	if (cb->rpc_msg_handler_cb)
@@ -664,8 +659,7 @@ static void *handle_event(void *arg)
 
 // Server function.
 int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
-			char *data, sem_t *sem, int client_id, int msgbuf_id,
-			uint64_t seqn)
+			char *data, int client_id, int msgbuf_id, uint64_t seqn)
 {
 	struct shmem_msgbuf_ctx *mb_ctx;
 	struct shmem_server_state *server;
@@ -680,14 +674,12 @@ int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 
 	msg->seq_num = seqn;
 	msg->rpc_ch = rpc_ch;
-	msg->sem = sem;
 
 	memset(&msg->data[0], 0, cb->msgdata_size);
 	strcpy(&msg->data[0], data);
 
-	log_info(
-		"Sending SHMEM msg: seqn=%lu sem_addr=0x%lx rpc_ch_addr=0x%lx data=\"%s\"",
-		msg->seq_num, (uint64_t)sem, (uint64_t)rpc_ch, msg->data);
+	log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=0x%lx data=\"%s\"",
+		 msg->seq_num, (uint64_t)rpc_ch, msg->data);
 
 	// Notify client by post client's sem directly.
 	log_debug("Post sema of Client %d: address=0x%lx", client_id,

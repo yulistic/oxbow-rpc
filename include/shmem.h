@@ -114,9 +114,9 @@ struct shmem_ch_cb {
 
 struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr);
 int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
-		   char *data, sem_t *sem, int msgbuf_id);
+		   char *data, int msgbuf_id);
 int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
-			char *data, sem_t *sem, int client_id, int msgbuf_id,
+			char *data, int client_id, int msgbuf_id,
 			uint64_t seqn);
 void register_client(struct shmem_ch_cb *cb, int client_fd, key_t *shm_key,
 		     key_t *cq_shm_key);

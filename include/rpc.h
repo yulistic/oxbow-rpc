@@ -52,7 +52,7 @@ struct __attribute__((packed)) rpc_msg_header {
 	uint64_t seqn;
 	struct rpc_ch_info *
 		client_rpc_ch; // Client's address should be delivered through server's response.
-	sem_t *sem; // Client's semaphore address.
+	sem_t *sem; // Client's semaphore address (Used by rdma channel).
 };
 
 // It stores identical data with struct rdma_msg but in little endian order.

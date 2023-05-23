@@ -59,7 +59,6 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id)
 
 	rpc_msg->header.client_rpc_ch = rpc_ch;
 	rpc_msg->header.seqn = shmem_msg->seq_num;
-	rpc_msg->header.sem = shmem_msg->sem; // TODO: Not used.
 
 	// Free msgbuf.
 	client_rpc_shmem_msg_handler(rpc_ch, msgbuf_id);
@@ -167,7 +166,7 @@ int send_rpc_msg_to_server(struct rpc_ch_info *rpc_ch, char *data, sem_t *sem)
 
 	case RPC_CH_SHMEM:
 		send_shmem_msg((struct shmem_ch_cb *)rpc_ch->ch_cb, rpc_ch,
-			       data, sem, msgbuf_id);
+			       data, msgbuf_id);
 		break;
 
 	default:

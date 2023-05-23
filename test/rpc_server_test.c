@@ -21,7 +21,7 @@ void server_msg_handler(void *arg)
 	msg = param->msg;
 
 	log_debug(
-		"[rpc_ch_SERVER_test] received from Client %d: seqn=%lu sem_addr=%lx data=%s",
+		"[rpc_ch_SERVER_test] received from Client %d: seqn=%lu sem_addr(rdma channel only)=%lx data=%s",
 		param->client_id, msg->header.seqn, (uint64_t)msg->header.sem,
 		msg->data);
 
@@ -41,9 +41,8 @@ void server_msg_handler(void *arg)
 	case RPC_CH_SHMEM:
 		rpc_ch.ch_type = RPC_CH_SHMEM;
 		send_rpc_response_to_client(&rpc_ch, msg->header.client_rpc_ch,
-					    data, (sem_t *)msg->header.sem,
-					    param->client_id, param->msgbuf_id,
-					    msg->header.seqn);
+					    data, NULL, param->client_id,
+					    param->msgbuf_id, msg->header.seqn);
 		break;
 	}
 

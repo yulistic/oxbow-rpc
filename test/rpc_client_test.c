@@ -31,9 +31,8 @@ void client_rdma_msg_handler(void *arg)
 // Called in the requester thread.
 void client_shmem_msg_handler(struct rpc_msg *msg)
 {
-	log_debug(
-		"(shmem_ch_CLIENT_test) received: seqn=%lu sem_addr=%lx data=%s",
-		msg->header.seqn, (uint64_t)msg->header.sem, msg->data);
+	log_debug("(shmem_ch_CLIENT_test) received: seqn=%lu data=%s",
+		  msg->header.seqn, msg->data);
 }
 
 int main(int argc, char **argv)
@@ -89,7 +88,7 @@ int main(int argc, char **argv)
 		rpc_cli_ch = init_rpc_client(
 			RPC_CH_SHMEM, "/tmp/rpc_test_cm", 0,
 			client_shmem_msg_handler,
-			NULL); // TODO: handler_thpool is not required.
+			NULL); // handler thpool is not required.
 		log_info("Client is connected to server.");
 
 		// Send a message.

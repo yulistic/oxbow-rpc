@@ -88,7 +88,7 @@ void send_rpc_response_to_client(struct rpc_ch_info *rpc_ch,
 		break;
 	case RPC_CH_SHMEM:
 		send_shmem_response((struct shmem_ch_cb *)rpc_ch->ch_cb,
-				    client_rpc_ch_addr, data, sem, client_id,
+				    client_rpc_ch_addr, data, client_id,
 				    msgbuf_id, seqn);
 		break;
 
