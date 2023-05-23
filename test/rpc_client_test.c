@@ -100,8 +100,6 @@ int main(int argc, char **argv)
 		wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id);
 		log_info("Resume the main thread.");
 
-		pause();
-
 		break;
 	}
 
