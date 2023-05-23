@@ -468,6 +468,7 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 	struct msg_handler_param *param;
 	struct rpc_msg *msg;
 	int msgbuf_id;
+	int ret;
 
 	// Check the size of received data.
 	if (wc->byte_len != (uint32_t)cb->msgbuf_size) {
@@ -477,8 +478,20 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 
 	// These are freed in the handler callback function.
 	rpc_param = calloc(1, sizeof *rpc_param);
+	if (!rpc_param) {
+		ret = -ENOMEM;
+		goto err1;
+	}
 	param = calloc(1, sizeof *param);
+	if (!param) {
+		ret = -ENOMEM;
+		goto err2;
+	}
 	msg = calloc(1, cb->msgbuf_size);
+	if (!msg) {
+		ret = -ENOMEM;
+		goto err3;
+	}
 
 	msgbuf_id = wc->wr_id;
 
@@ -499,7 +512,7 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 	rpc_param->client_rpc_ch =
 		(struct rpc_ch_info *)be64toh(mb_ctx->recv_buf->rpc_ch_addr);
 	rpc_param->param = param;
-	rpc_param->msg_handler_cb = cb->msg_handler_cb;
+	rpc_param->user_msg_handler_cb = cb->user_msg_handler_cb;
 
 	log_debug(
 		"Received msgbuf_id=%d seqn=%lu data=%s rpc_ch_addr=0x%lx sem_addr=0x%lx",
@@ -521,6 +534,12 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 		cb->state = WORKING;
 
 	return 0;
+err3:
+	free(param);
+err2:
+	free(rpc_param);
+err1:
+	return ret;
 }
 
 static int cq_event_handler(struct rdma_ch_cb *cb)
@@ -900,23 +919,14 @@ static inline uint64_t alloc_seqn(struct msgbuf_ctx *mb_ctx)
 	return ret;
 }
 
-/**
- * @brief 
- * 
- * @param cb 
- * @param data 
- * @param sem 
- * @param msgbuf_id 
- * @return int Size of sent data.
- */
 int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
-		  sem_t *sem, int msgbuf_id)
+		  sem_t *sem, int msgbuf_id, uint64_t seqn)
 {
 	struct ibv_send_wr *bad_wr;
 	struct rdma_msg *msg;
 	struct msgbuf_ctx *mb_ctx;
 	int ret;
-	uint64_t seqn;
+	uint64_t new_seqn;
 	// uint64_t data_size, remains;
 
 	if (msgbuf_id >= cb->msgbuf_cnt) {
@@ -928,10 +938,13 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 
 	mb_ctx = &cb->buf_ctxs[msgbuf_id];
 
-	seqn = alloc_seqn(mb_ctx);
-
 	msg = mb_ctx->send_buf;
-	msg->seq_num = htobe64(seqn);
+	if (!seqn) {
+		new_seqn = alloc_seqn(mb_ctx);
+		msg->seq_num = htobe64(new_seqn);
+	} else {
+		msg->seq_num = htobe64(seqn);
+	}
 	msg->sem_addr = htobe64((uint64_t)(unsigned long)sem);
 	msg->rpc_ch_addr = htobe64((uint64_t)(unsigned long)rpc_ch_addr);
 
@@ -947,7 +960,7 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 
 	log_info(
 		"Sending RDMA msg: seqn=%lu sem_addr=%lx rpc_ch_addr=%lx data=\"%s\"",
-		seqn, (uint64_t)sem, (uint64_t)rpc_ch_addr, msg->data);
+		msg->seq_num, (uint64_t)sem, (uint64_t)rpc_ch_addr, msg->data);
 
 	ret = ibv_post_send(cb->qp, &mb_ctx->sq_wr, &bad_wr);
 	if (ret) {
@@ -1063,12 +1076,13 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	cb->msgheader_size = msgheader_size();
 	cb->msgdata_size = msgdata_size(cb->msgbuf_size);
 	cb->rpc_msg_handler_cb = attr->rpc_msg_handler_cb;
-	cb->msg_handler_cb = attr->msg_handler_cb;
+	cb->user_msg_handler_cb = attr->user_msg_handler_cb;
 	cb->msg_handler_thpool = attr->msg_handler_thpool;
 
 	cb->buf_ctxs = calloc(cb->msgbuf_cnt, sizeof(struct msgbuf_ctx));
 	if (!cb->buf_ctxs) {
 		ret = -ENOMEM;
+		log_error("calloc failed.");
 		goto out4;
 	}
 
@@ -1085,9 +1099,6 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	cb->sin.ss_family = AF_INET;
 	cb->port = htobe16(attr->port);
 	sem_init(&cb->sem, 0, 0); // FIXME: Where is it used?
-
-	cb->count = 1; // TODO: Only used for test. To be deleted.
-	cb->verbose++; // TODO: Only used for test. To be deleted.
 
 	if (!cb->server) {
 		ret = get_addr(attr->ip_addr, (struct sockaddr *)&cb->sin);

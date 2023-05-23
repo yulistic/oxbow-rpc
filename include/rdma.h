@@ -24,6 +24,7 @@ enum rdma_ch_state {
 	ERROR
 };
 
+// Used when creating RDMA channel.
 struct rdma_ch_attr {
 	int port;
 	int server; /* 0 iff client */
@@ -32,7 +33,7 @@ struct rdma_ch_attr {
 	int msgbuf_size; // The size of a message buffer.
 	void (*rpc_msg_handler_cb)(
 		void *rpc_param); // rpc layer callback function.
-	void (*msg_handler_cb)(void *param); // user callback function.
+	void (*user_msg_handler_cb)(void *param); // user callback function.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
 };
 
@@ -72,7 +73,8 @@ struct msgbuf_ctx {
 	uint64_t remote_addr; /* remote guys TO */
 	uint32_t remote_len; /* remote guys LEN */
 
-	atomic_ulong seqn;
+	atomic_ulong
+		seqn; // TODO: It doesn't need to be atomic. Only one thread accesses it.
 };
 
 /** RDMA channel control block (per connection) */
@@ -92,12 +94,8 @@ struct rdma_ch_cb {
 	int msgdata_size; // A size of data in a msg (msg buffer size - header size).
 	struct msgbuf_ctx *buf_ctxs;
 	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
-	void (*msg_handler_cb)(void *param); // user's msg handler callback.
+	void (*user_msg_handler_cb)(void *param); // user's msg handler callback.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
-
-	// TODO: To be deleted. Used by client.
-	char *start_buf; /* rdma read src */
-	struct ibv_mr *start_mr;
 
 	enum rdma_ch_state state; /* used for cond/signalling */
 	sem_t sem;
@@ -105,8 +103,6 @@ struct rdma_ch_cb {
 	struct sockaddr_storage sin;
 	struct sockaddr_storage ssource;
 	__be16 port; /* dst port in NBO */
-	int verbose; /* verbose logging */ // TODO: Not required.
-	int count; /* ping count */ // TODO: Not required.
 	int size; /* ping data size */ // TODO: Not required.
 	int validate; /* validate ping data */ // TODO: Not required.
 
@@ -119,8 +115,19 @@ struct rdma_ch_cb {
 };
 
 struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr);
+
+/**
+ * @brief 
+ * 
+ * @param cb 
+ * @param data 
+ * @param sem 
+ * @param msgbuf_id 
+ * @param seqn If 0 is passed, allocate new number (usually by client).
+ * @return int Size of sent data.
+ */
 int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
-		  sem_t *sem, int msgbuf_id);
+		  sem_t *sem, int msgbuf_id, uint64_t seqn);
 void destroy_rdma_client(struct rdma_ch_cb *cb);
 
 #endif

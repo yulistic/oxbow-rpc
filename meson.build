@@ -50,6 +50,8 @@ oxbow_rpc_lib_srcs = [ \
 'src/rpc_server.c',
 'src/rpc_client.c',
 'src/channel/rdma.c',
+'src/channel/shmem.c',
+'src/channel/shmem_cm.c',
 ]
 
 oxbow_rpc_lib = shared_library('oxbow_rpc',
