@@ -29,8 +29,11 @@ void client_rdma_msg_handler(void *arg)
 }
 
 // Called in the requester thread.
-void client_shmem_msg_handler(struct rpc_msg *msg)
+void client_shmem_msg_handler(void *arg)
 {
+	struct rpc_msg *msg;
+	msg = (struct rpc_msg *)arg;
+
 	log_debug("(shmem_ch_CLIENT_test) received: seqn=%lu data=%s",
 		  msg->header.seqn, msg->data);
 }

@@ -6,7 +6,6 @@
 #include <pthread.h>
 #include "log.h"
 #include "thpool.h"
-#include "bit_array.h"
 
 #define RPC_MSG_BUF_NUM                                                        \
 	1 // The number of msg buffers per connection. Only 1 supported, for now.
@@ -22,7 +21,7 @@ enum rpc_channel_type {
 struct rpc_ch_info {
 	enum rpc_channel_type ch_type;
 	void *ch_cb; // Channel control block.
-	BIT_ARRAY *msgbuf_bitmap;
+	void *msgbuf_bitmap; // BIT_ARRAY*
 	pthread_spinlock_t msgbuf_bitmap_lock;
 };
 

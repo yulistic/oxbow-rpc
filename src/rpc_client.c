@@ -6,6 +6,7 @@
 #include "rdma.h"
 #include "shmem.h"
 #include "shmem_cm.h"
+#include "bit_array.h"
 
 /**
  * @brief Callback function of RPC layer. It frees RPC layer resources.
@@ -64,7 +65,7 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id)
 	client_rpc_shmem_msg_handler(rpc_ch, msgbuf_id);
 
 	// User defined callback function.
-	cb->user_msg_handler_cb(rpc_msg);
+	cb->user_msg_handler_cb((void *)rpc_msg);
 
 	free(rpc_msg);
 }

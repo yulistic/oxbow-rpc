@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <rpc.h>
+#include "bit_array.h"
 
 // TODO: Need to profile this lock contention.
 uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch)
