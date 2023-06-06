@@ -32,7 +32,6 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 
 	switch (ch_type) {
 	case RPC_CH_RDMA:
-
 		rdma_attr.server = is_server;
 		rdma_attr.msgbuf_cnt = RPC_MSG_BUF_NUM;
 		rdma_attr.msgbuf_size = RPC_MSG_BUF_SIZE;

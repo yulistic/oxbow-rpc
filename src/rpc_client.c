@@ -120,10 +120,18 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 
 	default:
 		log_error("Invalid channel type for RPC.");
-		return NULL;
+		goto err;
+	}
+
+	if (!rpc_ch->ch_cb) {
+		goto err;
 	}
 
 	return rpc_ch;
+
+err:
+	free(rpc_ch);
+	return NULL;
 }
 
 void destroy_rpc_client(struct rpc_ch_info *rpc_ch)

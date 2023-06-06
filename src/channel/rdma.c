@@ -64,7 +64,7 @@ static int cma_event_handler(struct rdma_cm_id *cma_id,
 		ret = rdma_resolve_route(cma_id, 2000);
 		if (ret) {
 			cb->state = ERROR;
-			fprintf(stderr, "rdma_resolve_route");
+			fprintf(stderr, "rdma_resolve_route\n");
 			sem_post(&cb->sem);
 		}
 		break;
@@ -858,7 +858,7 @@ static int bind_client(struct rdma_ch_cb *cb)
 	ret = rdma_resolve_addr(cb->cm_id, NULL, (struct sockaddr *)&cb->sin,
 				2000);
 	if (ret) {
-		fprintf(stderr, "rdma_resolve_addr");
+		fprintf(stderr, "rdma_resolve_addr\n");
 		return ret;
 	}
 
@@ -1134,9 +1134,9 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	} else
 		run_client(cb);
 
-	printf("Destroy rdma connections.\n");
 	return cb;
 
+	printf("Destroy rdma connections.\n");
 out1:
 	rdma_destroy_id(cb->cm_id);
 out2:
