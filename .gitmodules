@@ -10,3 +10,6 @@
 [submodule "lib/BitArray"]
 	path = lib/BitArray
 	url = https://github.com/noporpoise/BitArray.git
+[submodule "lib/microbench_timestat"]
+	path = lib/microbench_timestat
+	url = https://github.com/yulistic/microbench_timestat.git

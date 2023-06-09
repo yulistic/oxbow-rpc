@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	handler_thpool = thpool_init(1);
+	handler_thpool = thpool_init(1, "handler");
 
 	switch (ch_type) {
 	case RPC_CH_RDMA:

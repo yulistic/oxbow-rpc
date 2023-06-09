@@ -85,6 +85,7 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 	pthread_spin_init(&rpc_ch->msgbuf_bitmap_lock, PTHREAD_PROCESS_PRIVATE);
 
 	// Print for test.
+	printf("Message buffer bitmaps: ");
 	bit_array_print(rpc_ch->msgbuf_bitmap, stdout);
 	fputc('\n', stdout);
 

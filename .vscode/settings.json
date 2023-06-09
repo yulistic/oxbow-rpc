@@ -5,7 +5,8 @@
 		"RDMA",
 		"seqn",
 		"thpool",
-		"threadpool"
+		"threadpool",
+		"tput"
 	],
 	"files.associations": {
 		"semaphore.h": "c",

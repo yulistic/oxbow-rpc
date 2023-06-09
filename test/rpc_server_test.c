@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	handler_thpool = thpool_init(1);
+	handler_thpool = thpool_init(1, "handler");
 
 	// run rpc_server.
 	switch (ch_type) {
