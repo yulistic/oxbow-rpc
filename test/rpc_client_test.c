@@ -29,7 +29,7 @@ void client_rdma_msg_handler(void *arg)
 }
 
 // Called in the requester thread.
-void client_shmem_msg_handler(void *arg)
+void rpc_shmem_client_handler(void *arg)
 {
 	struct rpc_msg *msg;
 	msg = (struct rpc_msg *)arg;
@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 	case RPC_CH_SHMEM:
 		rpc_cli_ch = init_rpc_client(
 			RPC_CH_SHMEM, "/tmp/rpc_test_cm", 0,
-			client_shmem_msg_handler,
+			rpc_shmem_client_handler,
 			NULL); // handler thpool is not required.
 		log_info("Client is connected to server.");
 

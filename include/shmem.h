@@ -120,6 +120,8 @@ int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 			uint64_t seqn);
 void register_client(struct shmem_ch_cb *cb, int client_fd, key_t *shm_key,
 		     key_t *cq_shm_key);
+void deregister_client_with_sockfd(struct shmem_ch_cb *server_cb,
+				   int client_sockfd);
 void deregister_client_with_key(struct shmem_ch_cb *server_cb,
 				key_t client_key);
 void destroy_shmem_client(struct shmem_ch_cb *cb);
