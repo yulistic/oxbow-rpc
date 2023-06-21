@@ -309,7 +309,7 @@ void send_msg(void *arg)
 		time_stats_start(&polling_stat);
 #endif
 
-		wait_rpc_shmem_response(g_rpc_cli_ch, msgbuf_id);
+		wait_rpc_shmem_response(g_rpc_cli_ch, msgbuf_id, 1);
 
 #ifdef LAT_PROFILE
 		time_stats_stop(&polling_stat);

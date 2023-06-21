@@ -103,5 +103,6 @@ void destroy_rpc_client(struct rpc_ch_info *rpc_ch);
 
 uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch);
 void free_msgbuf_id(struct rpc_ch_info *rpc_ch, uint64_t bit_id);
-void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id);
+void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
+			     int no_callback);
 #endif

@@ -34,7 +34,15 @@ static void client_rpc_shmem_msg_handler(struct rpc_ch_info *client_rpc_ch,
 	free_msgbuf_id(client_rpc_ch, msgbuf_id);
 }
 
-void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id)
+/**
+ * @brief 
+ * 
+ * @param rpc_ch 
+ * @param msgbuf_id 
+ * @param callback  If true, call user callback function.
+ */
+void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
+			     int callback)
 {
 	sem_t *sem;
 	struct shmem_ch_cb *cb;
@@ -65,7 +73,8 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id)
 	client_rpc_shmem_msg_handler(rpc_ch, msgbuf_id);
 
 	// User defined callback function.
-	cb->user_msg_handler_cb((void *)rpc_msg);
+	if (callback)
+		cb->user_msg_handler_cb((void *)rpc_msg);
 
 	free(rpc_msg);
 }

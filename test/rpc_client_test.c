@@ -99,7 +99,7 @@ int main(int argc, char **argv)
 		msgbuf_id = send_rpc_msg_to_server(rpc_cli_ch, data, NULL);
 
 		log_info("Waiting server response.");
-		wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id);
+		wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id, 1);
 		log_info("Resume the main thread.");
 
 		break;
