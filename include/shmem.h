@@ -35,7 +35,7 @@ struct shmem_msg {
 struct shmem_ch_attr {
 	int server; /* 0 iff client */
 	int msgbuf_cnt; // The number of msg buffers.
-	int msgbuf_size; // The size of a message buffer.
+	int msgdata_size; // The size of a message data.
 	void (*rpc_msg_handler_cb)(
 		void *rpc_param); // rpc layer callback function.
 	void (*user_msg_handler_cb)(void *param); // user callback function.
@@ -86,9 +86,9 @@ struct shmem_ch_cb {
 
 	// BIT_ARRAY *msgbuf_bitmap; // Set to 1 if a new msg arrived.
 	int msgbuf_cnt; // Total number of msg buffers.
-	int msgbuf_size; // A size of a msg buffer including headers.
+	int msgbuf_size; // A size of a msg buffer including headers. [msgbuf] = [msgheader] + [msgdata]
 	int msgheader_size; // A size of a header in a msg (msg buffer size - data size).
-	int msgdata_size; // A size of data in a msg (msg buffer size - header size).
+	int msgdata_size; // A size of data in a msg (msg buffer size - header size). Given by user.
 	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
 	void (*user_msg_handler_cb)(void *param); // user's msg handler callback.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.

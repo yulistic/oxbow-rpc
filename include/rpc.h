@@ -9,7 +9,6 @@
 
 #define RPC_MSG_BUF_NUM                                                        \
 	1 // The number of msg buffers per connection. Only 1 supported, for now.
-#define RPC_MSG_BUF_SIZE 1024 // Max msg buffer size including headers.
 
 enum rpc_channel_type {
 	RPC_CH_RDMA = 1,
@@ -23,6 +22,28 @@ struct rpc_ch_info {
 	void *ch_cb; // Channel control block.
 	void *msgbuf_bitmap; // BIT_ARRAY*
 	pthread_spinlock_t msgbuf_bitmap_lock;
+};
+
+/*
+ *  Request: Client -> Server
+ *  Response: Server -> Client
+ */
+struct rpc_req_param {
+	struct rpc_ch_info *rpc_ch; // client's current rpc channel.
+	char *data; // msg data to send.
+	sem_t *sem; /* address of client's semaphore address. (Required by RDMA channel)
+		     * It is used to wait until server's response (ack) arrives.
+		     */
+};
+
+struct rpc_resp_param {
+	struct rpc_ch_info *rpc_ch; // server's current rpc channel.
+	void *client_rpc_ch_addr; // address of client's rpc channel (rpc_ch). (Passed when requested.)
+	char *data; // msg data to send.
+	sem_t *sem; // address of client's semaphore address. (Required by RDMA channel)
+	int client_id; // client id (= cb id). To identify which client sent a message in SHMEM channel.
+	int msgbuf_id; // msg buffer where client's msg arrived.
+	uint64_t seqn; // seqn of the client's request.
 };
 
 // Call graph of callback functions:
@@ -60,49 +81,21 @@ struct __attribute__((packed)) rpc_msg {
 	char data[]; // Flexible array.
 };
 
-/**
- * @brief Initialize RPC server.
- * 
- * @param ch_type Channel type. For example, RDMA, shared memory, and so on.
- * @param target cm socket name for SHMEM connection. Not used for RDMA connection.
- * @param port 
- * @param msg_handler Message handler callback function.
- * @param worker_thpool A worker thread pool that executes the handler callback function.
- * @return 0 on success.
- */
 int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
-		    void (*msg_handler)(void *data), threadpool worker_thpool);
-/**
- * @brief Initialize RPC client.
- * 
- * @param ch_type Channel type. For example, RDMA, shared memory, and so on.
- * @param target Server ip_addr for RDMA connection, cm_socket_name for SHMEM connection.
- * @param port 
- * @param msg_handler Message handler callback function.
- * @param worker_thpool A worker thread pool that executes the handler callback function.
- * @return struct rpc_ch_info* RPC channel information. It is used to send a message to the counterpart.
- */
+		    int max_msgdata_size, void (*msg_handler)(void *data),
+		    threadpool worker_thpool);
 struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
-				    int port, void (*msg_handler)(void *data),
+				    int port, int max_msgdata_size,
+				    void (*msg_handler)(void *data),
 				    threadpool worker_thpool);
 
-/**
- * @brief  Send an RPC message to server.
- * 
- * @param rpc_ch 
- * @param data 
- * @param sem 
- * @return int msgbuf_id is returned. (Required by SHMEM channel).
- */
-int send_rpc_msg_to_server(struct rpc_ch_info *rpc_ch, char *data, sem_t *sem);
-void send_rpc_response_to_client(struct rpc_ch_info *rpc_ch,
-				 void *client_rpc_ch_addr, char *data,
-				 sem_t *sem, int client_id, int msgbuf_id,
-				 uint64_t seqn);
+int send_rpc_msg_to_server(struct rpc_req_param *req_param);
+void send_rpc_response_to_client(struct rpc_resp_param *resp_param);
 void destroy_rpc_client(struct rpc_ch_info *rpc_ch);
 
 uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch);
 void free_msgbuf_id(struct rpc_ch_info *rpc_ch, uint64_t bit_id);
 void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			     int no_callback);
+int get_max_msgdata_size(struct rpc_ch_info *rpc_ch);
 #endif

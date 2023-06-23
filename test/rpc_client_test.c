@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include "test_global.h"
 #include "log.h"
 #include "rpc.h"
 #include "thpool.h"
@@ -47,6 +48,7 @@ int main(int argc, char **argv)
 	int ret, msgbuf_id;
 	enum rpc_channel_type ch_type;
 	sem_t sem;
+	struct rpc_req_param req_param;
 
 	// To get rid of unused parameter warning.
 	argc = argc;
@@ -72,15 +74,22 @@ int main(int argc, char **argv)
 
 	switch (ch_type) {
 	case RPC_CH_RDMA:
-		rpc_cli_ch = init_rpc_client(RPC_CH_RDMA, ip_addr, 7174,
-					     client_rdma_msg_handler,
-					     handler_thpool);
+		rpc_cli_ch =
+			init_rpc_client(RPC_CH_RDMA, ip_addr, 7174,
+					MAX_MSG_DATA_SIZE, client_rdma_msg_handler,
+					handler_thpool);
 		log_info("Client is connected to server.");
 
 		// Send a message.
 		sem_init(&sem, 0, 0);
+
+		// Set param.
+		req_param = (struct rpc_req_param){ .rpc_ch = rpc_cli_ch,
+						    .data = data,
+						    .sem = &sem };
+
 		log_info("Sending RPC message:%s", data);
-		send_rpc_msg_to_server(rpc_cli_ch, data, &sem);
+		send_rpc_msg_to_server(&req_param);
 
 		log_info("Waiting server response.");
 		sem_wait(&sem);
@@ -89,14 +98,19 @@ int main(int argc, char **argv)
 		break;
 	case RPC_CH_SHMEM:
 		rpc_cli_ch = init_rpc_client(
-			RPC_CH_SHMEM, "/tmp/rpc_test_cm", 0,
+			RPC_CH_SHMEM, "/tmp/rpc_test_cm", 0, MAX_MSG_DATA_SIZE,
 			rpc_shmem_client_handler,
 			NULL); // handler thpool is not required.
 		log_info("Client is connected to server.");
 
+		// Set param.
+		req_param = (struct rpc_req_param){ .rpc_ch = rpc_cli_ch,
+						    .data = data,
+						    .sem = NULL };
+
 		// Send a message.
 		log_info("Sending RPC message:%s", data);
-		msgbuf_id = send_rpc_msg_to_server(rpc_cli_ch, data, NULL);
+		msgbuf_id = send_rpc_msg_to_server(&req_param);
 
 		log_info("Waiting server response.");
 		wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id, 1);

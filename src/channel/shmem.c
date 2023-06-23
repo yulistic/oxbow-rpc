@@ -81,15 +81,16 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	msg->seq_num = seqn;
 	msg->rpc_ch = rpc_ch;
 
-	// Send fixed size, currently.
-	memset(&msg->data[0], 0, cb->msgdata_size);
-	strcpy(&msg->data[0], data);
+	// Copy and send fixed size, currently.
+	// FIXME: Can we copy only the meaningful data? memset will be required.
+	// memset(&msg->data[0], 0, cb->msgdata_size);
+	memcpy(&msg->data[0], data, cb->msgdata_size);
 
 	// Notify server which msgbuf has a new message.
 	mb_ctx->evt->server_evt = 1;
 
-	log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=%lx data=\"%s\"",
-		 seqn, (uint64_t)rpc_ch, msg->data);
+	// log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=%lx data=\"%s\"",
+	// 	 seqn, (uint64_t)rpc_ch, msg->data);
 
 	// Post global sem to notify server an event arrived.
 	sem_post(cb->server_cq_sem);
@@ -152,8 +153,8 @@ int get_shm_seg(key_t key, uint64_t size)
 		if (err_num == EINVAL) {
 			log_error(
 				"There exists a segment with the same key and different size."
-				" key=0x%lx size=%lu Please remove that segment using a command:"
-				" ipcrm -m <shmid>",
+				" key=0x%lx size=%lu Please check the segment using a command: `ipcs`"
+				" and remove that segment using a command: `ipcrm -m <shmid>`",
 				key, size);
 		} else {
 			log_error(
@@ -555,8 +556,10 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 	msg->header.seqn = mb_ctx->req_buf->seq_num;
 	msg->header.client_rpc_ch = mb_ctx->req_buf->rpc_ch;
 
-	// Copy fixed size, currently.
-	strncpy(&msg->data[0], &mb_ctx->req_buf->data[0], cb->msgdata_size);
+	// Copy and send fixed size, currently.
+	// FIXME: Can we copy only the meaningful data? memset will be required.
+	// memset(...);
+	memcpy(&msg->data[0], &mb_ctx->req_buf->data[0], cb->msgdata_size);
 
 	param->client_id = client->cb_id;
 	param->msgbuf_id = msgbuf_id;
@@ -675,11 +678,13 @@ int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	msg->seq_num = seqn;
 	msg->rpc_ch = rpc_ch;
 
-	memset(&msg->data[0], 0, cb->msgdata_size);
-	strcpy(&msg->data[0], data);
+	// Copy and send fixed size, currently.
+	// FIXME: Can we copy only the meaningful data? memset will be required.
+	// memset(&msg->data[0], 0, cb->msgdata_size);
+	memcpy(&msg->data[0], data, cb->msgdata_size);
 
-	log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=0x%lx data=\"%s\"",
-		 msg->seq_num, (uint64_t)rpc_ch, msg->data);
+	// log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=0x%lx data=\"%s\"",
+	// 	 msg->seq_num, (uint64_t)rpc_ch, msg->data);
 
 	// Notify client by post client's sem directly.
 	log_debug("Post sema of Client %d: address=0x%lx", client_id,
@@ -809,6 +814,11 @@ static inline int msgdata_size(int msgbuf_size)
 	return msgbuf_size - msgheader_size();
 }
 
+static inline int msgbuf_size(int msgdata_size)
+{
+	return msgdata_size + msgheader_size();
+}
+
 struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 {
 	struct shmem_ch_cb *cb;
@@ -822,9 +832,9 @@ struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 
 	cb->server = attr->server;
 	cb->msgbuf_cnt = attr->msgbuf_cnt;
-	cb->msgbuf_size = attr->msgbuf_size;
 	cb->msgheader_size = msgheader_size();
-	cb->msgdata_size = msgdata_size(cb->msgbuf_size);
+	cb->msgdata_size = attr->msgdata_size;
+	cb->msgbuf_size = msgbuf_size(attr->msgdata_size);
 	cb->rpc_msg_handler_cb = attr->rpc_msg_handler_cb;
 	cb->user_msg_handler_cb = attr->user_msg_handler_cb;
 	cb->msg_handler_thpool = attr->msg_handler_thpool;

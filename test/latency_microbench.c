@@ -9,6 +9,7 @@
 #include "time_stats.h"
 
 #define RDMA_PORT 7174
+#define MAX_MSG_DATA_SIZE 4096
 #define MSG_CNT 10000
 #define LAT_PROFILE
 
@@ -136,6 +137,7 @@ void server_msg_handler(void *arg)
 	struct msg_handler_param *param;
 	struct rpc_msg *msg;
 	struct rpc_ch_info rpc_ch = { 0 };
+	struct rpc_resp_param resp_param = { 0 };
 	char *send_buf;
 
 #ifdef LAT_PROFILE
@@ -160,15 +162,29 @@ void server_msg_handler(void *arg)
 	if (g_conf.rdma) {
 		// ch_cb is passed as a parameter because it is different for each client.
 		rpc_ch.ch_type = RPC_CH_RDMA;
-		send_rpc_response_to_client(&rpc_ch, msg->header.client_rpc_ch,
-					    send_buf, (sem_t *)msg->header.sem,
-					    0, param->msgbuf_id,
-					    msg->header.seqn);
+		resp_param = (struct rpc_resp_param){
+			.rpc_ch = &rpc_ch,
+			.client_rpc_ch_addr = msg->header.client_rpc_ch,
+			.data = send_buf,
+			.sem = (sem_t *)msg->header.sem,
+			.client_id = 0, // Not used.
+			.msgbuf_id = param->msgbuf_id,
+			.seqn = msg->header.seqn
+		};
+		send_rpc_response_to_client(&resp_param);
+
 	} else { // shmem
 		rpc_ch.ch_type = RPC_CH_SHMEM;
-		send_rpc_response_to_client(&rpc_ch, msg->header.client_rpc_ch,
-					    send_buf, NULL, param->client_id,
-					    param->msgbuf_id, msg->header.seqn);
+		resp_param = (struct rpc_resp_param){
+			.rpc_ch = &rpc_ch,
+			.client_rpc_ch_addr = msg->header.client_rpc_ch,
+			.data = send_buf,
+			.sem = NULL, // Not used.
+			.client_id = param->client_id,
+			.msgbuf_id = param->msgbuf_id,
+			.seqn = msg->header.seqn
+		};
+		send_rpc_response_to_client(&resp_param);
 	}
 #ifdef LAT_PROFILE
 	time_stats_stop(&server_stat);
@@ -191,11 +207,11 @@ void run_server(void)
 
 	if (g_conf.rdma) {
 		ret = init_rpc_server(RPC_CH_RDMA, NULL, RDMA_PORT,
-				      server_msg_handler,
+				      MAX_MSG_DATA_SIZE, server_msg_handler,
 				      server_handler_thpool);
 	} else {
 		ret = init_rpc_server(RPC_CH_SHMEM, g_shmem_path, 0,
-				      server_msg_handler,
+				      MAX_MSG_DATA_SIZE, server_msg_handler,
 				      server_handler_thpool);
 	}
 
@@ -255,12 +271,14 @@ void init_client(void)
 	if (g_conf.rdma) {
 		g_rpc_cli_ch =
 			init_rpc_client(RPC_CH_RDMA, g_conf.server_ip_addr,
-					RDMA_PORT, client_rdma_msg_handler,
+					RDMA_PORT, MAX_MSG_DATA_SIZE,
+					client_rdma_msg_handler,
 					client_handler_thpool);
 		log_info("Client is connected to server.");
 	} else {
 		g_rpc_cli_ch = init_rpc_client(
-			RPC_CH_SHMEM, g_shmem_path, 0, rpc_shmem_client_handler,
+			RPC_CH_SHMEM, g_shmem_path, 0, MAX_MSG_DATA_SIZE,
+			rpc_shmem_client_handler,
 			NULL); // handler thpool is not required.
 		log_info("Client is connected to server.");
 	}
@@ -277,10 +295,9 @@ void send_msg(void *arg)
 	unsigned long i;
 	sem_t sem;
 	int msgbuf_id;
+	struct rpc_req_param req_param;
 
 	i = (unsigned long)arg;
-
-	sem_init(&sem, 0, 0);
 
 	send_buf = calloc(1, g_conf.msg_size);
 	sprintf(send_buf, "%lu", i);
@@ -289,19 +306,33 @@ void send_msg(void *arg)
 		time_stats_start(&g_stat);
 
 	if (g_conf.rdma) {
-		// Send a message.
+		// Init sema.
+		sem_init(&sem, 0, 0);
+
+		// Set param.
+		req_param = (struct rpc_req_param){ .rpc_ch = g_rpc_cli_ch,
+						    .data = send_buf,
+						    .sem = &sem };
+
+		// Send message to server.
 		log_info("Sending RPC message (%lu): %s", i, send_buf);
-		send_rpc_msg_to_server(g_rpc_cli_ch, send_buf, &sem);
+		send_rpc_msg_to_server(&req_param);
 
 		log_info("Waiting server response.");
 		sem_wait(&sem);
 		log_info("Resume the main thread.");
 
 	} else {
-		// Send a message.
+		// Set param.
+		req_param = (struct rpc_req_param){
+			.rpc_ch = g_rpc_cli_ch,
+			.data = send_buf,
+			.sem = NULL // Not used.
+		};
+
+		// Send message to server.
 		log_info("Sending RPC message (%lu): %s", i, send_buf);
-		msgbuf_id =
-			send_rpc_msg_to_server(g_rpc_cli_ch, send_buf, NULL);
+		msgbuf_id = send_rpc_msg_to_server(&req_param);
 
 		log_info("Waiting server response.");
 

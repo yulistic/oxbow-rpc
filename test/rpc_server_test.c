@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include "test_global.h"
 #include "log.h"
 #include "rpc.h"
 #include "thpool.h"
-// #include "test_global.h"
 
 threadpool handler_thpool;
 enum rpc_channel_type ch_type;
@@ -16,6 +16,7 @@ void server_msg_handler(void *arg)
 	struct rpc_msg *msg;
 	struct rpc_ch_info rpc_ch = { 0 };
 	char *data = "Hello client. I received your message.";
+	struct rpc_resp_param resp_param;
 
 	param = (struct msg_handler_param *)arg;
 	msg = param->msg;
@@ -34,15 +35,33 @@ void server_msg_handler(void *arg)
 		// ch_cb is passed as a parameter because it is different for each client.
 		rpc_ch.ch_type = RPC_CH_RDMA;
 
-		send_rpc_response_to_client(&rpc_ch, msg->header.client_rpc_ch,
-					    data, (sem_t *)msg->header.sem, 0,
-					    param->msgbuf_id, msg->header.seqn);
+		resp_param = (struct rpc_resp_param){
+			.rpc_ch = &rpc_ch,
+			.client_rpc_ch_addr = msg->header.client_rpc_ch,
+			.data = data,
+			.sem = (sem_t *)msg->header.sem,
+			.client_id = 0, // Not used.
+			.msgbuf_id = param->msgbuf_id,
+			.seqn = msg->header.seqn
+		};
+
+		send_rpc_response_to_client(&resp_param);
 		break;
+
 	case RPC_CH_SHMEM:
 		rpc_ch.ch_type = RPC_CH_SHMEM;
-		send_rpc_response_to_client(&rpc_ch, msg->header.client_rpc_ch,
-					    data, NULL, param->client_id,
-					    param->msgbuf_id, msg->header.seqn);
+
+		resp_param = (struct rpc_resp_param){
+			.rpc_ch = &rpc_ch,
+			.client_rpc_ch_addr = msg->header.client_rpc_ch,
+			.data = data,
+			.sem = NULL, // Not used.
+			.client_id = param->client_id,
+			.msgbuf_id = param->msgbuf_id,
+			.seqn = msg->header.seqn
+		};
+
+		send_rpc_response_to_client(&resp_param);
 		break;
 	}
 
@@ -76,11 +95,13 @@ int main(int argc, char **argv)
 	switch (ch_type) {
 	case RPC_CH_RDMA:
 		ret = init_rpc_server(RPC_CH_RDMA, NULL, 7174,
-				      server_msg_handler, handler_thpool);
+				      MAX_MSG_DATA_SIZE, server_msg_handler,
+				      handler_thpool);
 		break;
 	case RPC_CH_SHMEM:
 		ret = init_rpc_server(RPC_CH_SHMEM, "/tmp/rpc_test_cm", 0,
-				      server_msg_handler, handler_thpool);
+				      MAX_MSG_DATA_SIZE, server_msg_handler,
+				      handler_thpool);
 		break;
 	}
 

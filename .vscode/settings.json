@@ -2,6 +2,8 @@
 	"editor.formatOnSave": true,
 	"cSpell.words": [
 		"lkey",
+		"msgdata",
+		"msgheader",
 		"RDMA",
 		"seqn",
 		"thpool",
@@ -20,5 +22,6 @@
 	"cmake.configureOnOpen": false,
 	"vim.easymotion": true,
 	"C_Cpp.default.compileCommands": "build/vscode_compile_commands.json",
-	"rewrap.autoWrap.enabled": true
+	"rewrap.autoWrap.enabled": true,
+	"mesonbuild.buildFolder": "build"
 }

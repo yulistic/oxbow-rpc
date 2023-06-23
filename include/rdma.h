@@ -30,7 +30,7 @@ struct rdma_ch_attr {
 	int server; /* 0 iff client */
 	char ip_addr[16]; // Target server ip addr. (required by client)
 	int msgbuf_cnt; // The number of msg buffers.
-	int msgbuf_size; // The size of a message buffer.
+	int msgdata_size; // The size of a message data.
 	void (*rpc_msg_handler_cb)(
 		void *rpc_param); // rpc layer callback function.
 	void (*user_msg_handler_cb)(void *param); // user callback function.
@@ -89,9 +89,9 @@ struct rdma_ch_cb {
 	struct ibv_qp *qp;
 
 	int msgbuf_cnt; // Total number of msg buffers.
-	int msgbuf_size; // A size of a msg buffer including headers.
+	int msgbuf_size; // A size of a msg buffer including headers. msgbuf = [msgheader]+[msgdata]
 	int msgheader_size; // A size of a header in a msg (msg buffer size - data size).
-	int msgdata_size; // A size of data in a msg (msg buffer size - header size).
+	int msgdata_size; // A size of data in a msg (msg buffer size - header size). Given by user.
 	struct msgbuf_ctx *buf_ctxs;
 	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
 	void (*user_msg_handler_cb)(void *param); // user's msg handler callback.

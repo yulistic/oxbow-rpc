@@ -330,6 +330,11 @@ static inline int msgdata_size(int msgbuf_size)
 	return msgbuf_size - msgheader_size();
 }
 
+static inline int msgbuf_size(int msgdata_size)
+{
+	return msgdata_size + msgheader_size();
+}
+
 static inline int valid_msg_size(struct rdma_ch_cb *cb, char *data)
 {
 	return (cb->msgheader_size + sizeof *data) <= (uint64_t)cb->msgbuf_size;
@@ -501,8 +506,8 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 	msg->header.sem = (sem_t *)be64toh(mb_ctx->recv_buf->sem_addr);
 	msg->header.client_rpc_ch =
 		(struct rpc_ch_info *)be64toh(mb_ctx->recv_buf->rpc_ch_addr);
-	// Copy fixed size, currently.
-	strncpy(&msg->data[0], &mb_ctx->recv_buf->data[0], cb->msgdata_size);
+	// FIXME: Copy fixed size, currently.
+	memcpy(&msg->data[0], &mb_ctx->recv_buf->data[0], cb->msgdata_size);
 
 	param->msgbuf_id = msgbuf_id;
 	param->ch_cb = (struct rdma_ch_cb *)cb;
@@ -948,13 +953,13 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 	msg->sem_addr = htobe64((uint64_t)(unsigned long)sem);
 	msg->rpc_ch_addr = htobe64((uint64_t)(unsigned long)rpc_ch_addr);
 
-	// Send fixed size, currently.
-	memset(&msg->data[0], 0, cb->msgdata_size);
-	strcpy(&msg->data[0], data);
+	// Copy and send fixed size, currently.
+	// FIXME: Can we copy only the meaningful data? memset will be required.
+	// memset(&msg->data[0], 0, cb->msgdata_size);
+	memcpy(&msg->data[0], data, cb->msgdata_size);
 
-	// No duplicate memset:
-	// strcpy(&msg->data[0], data);
-	// data_size = strlen(data) + 1; // Including null terminator.
+	// No duplicate memset: (how to get data_size?)
+	// memcpy(&msg->data[0], data, data_size);
 	// remains = cb->msgdata_size - data_size;
 	// memset(&msg->data[data_size], 0, remains);
 
@@ -1072,9 +1077,9 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	}
 
 	cb->msgbuf_cnt = attr->msgbuf_cnt;
-	cb->msgbuf_size = attr->msgbuf_size;
 	cb->msgheader_size = msgheader_size();
-	cb->msgdata_size = msgdata_size(cb->msgbuf_size);
+	cb->msgdata_size = attr->msgdata_size;
+	cb->msgbuf_size = msgbuf_size(attr->msgdata_size);
 	cb->rpc_msg_handler_cb = attr->rpc_msg_handler_cb;
 	cb->user_msg_handler_cb = attr->user_msg_handler_cb;
 	cb->msg_handler_thpool = attr->msg_handler_thpool;
