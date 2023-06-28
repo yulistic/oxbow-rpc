@@ -348,6 +348,7 @@ static int alloc_msg_buffers(struct rdma_ch_cb *cb)
 	for (i = 0; i < cb->msgbuf_cnt; i++) {
 		mb_ctx = &cb->buf_ctxs[i];
 		// mb_ctx->recv_buf = calloc(1, cb->msgbuf_size);
+		mb_ctx->recv_buf = NULL;
 		ret = posix_memalign((void **)&mb_ctx->recv_buf,
 				     sysconf(_SC_PAGESIZE), cb->msgbuf_size);
 		if (ret != 0) {
@@ -361,6 +362,7 @@ static int alloc_msg_buffers(struct rdma_ch_cb *cb)
 		log_debug("alloc mb_ctx->recv_buf=%lx", mb_ctx->recv_buf);
 
 		// mb_ctx->send_buf = calloc(1, cb->msgbuf_size);
+		mb_ctx->send_buf = NULL;
 		ret = posix_memalign((void **)&mb_ctx->send_buf,
 				     sysconf(_SC_PAGESIZE), cb->msgbuf_size);
 		if (ret != 0) {
@@ -447,6 +449,7 @@ static int setup_buffers(struct rdma_ch_cb *cb)
 // err3:
 // 	free(cb->rdma_buf);
 err1:
+	// Deregister MRs.
 	for (i = 0; i < cb->msgbuf_cnt; i++) {
 		mb_ctx = &cb->buf_ctxs[i];
 		if (mb_ctx->recv_mr != NULL)
@@ -456,6 +459,14 @@ err1:
 	}
 
 err2:
+	// Free buffers.
+	for (i = 0; i < cb->msgbuf_cnt; i++) {
+		mb_ctx = &cb->buf_ctxs[i];
+		if (mb_ctx->recv_buf != NULL)
+			free(mb_ctx->recv_buf);
+		if (mb_ctx->send_buf != NULL)
+			free(mb_ctx->send_buf);
+	}
 	return ret;
 }
 
