@@ -318,7 +318,7 @@ void *shmem_cm_thread(void *arg)
 
 			} else if (events[i].events & (EPOLLRDHUP | EPOLLHUP)) {
 				// client disconnected.
-				log_info("Connection closed.");
+				log_info("Connection closed.\n");
 				disconnect_client(epfd, events[i].data.fd);
 				deregister_client_with_sockfd(
 					cb, events[i].data.fd);
