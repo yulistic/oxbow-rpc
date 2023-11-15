@@ -94,12 +94,12 @@ int main(int argc, char **argv)
 	// run rpc_server.
 	switch (ch_type) {
 	case RPC_CH_RDMA:
-		ret = init_rpc_server(RPC_CH_RDMA, NULL, 7174,
+		ret = init_rpc_server(RPC_CH_RDMA, NULL, g_port,
 				      MAX_MSG_DATA_SIZE, server_msg_handler,
 				      handler_thpool);
 		break;
 	case RPC_CH_SHMEM:
-		ret = init_rpc_server(RPC_CH_SHMEM, "/tmp/rpc_test_cm", 0,
+		ret = init_rpc_server(RPC_CH_SHMEM, g_shmem_path, 0,
 				      MAX_MSG_DATA_SIZE, server_msg_handler,
 				      handler_thpool);
 		break;

@@ -7,8 +7,7 @@
 #include "log.h"
 #include "thpool.h"
 
-#define RPC_MSG_BUF_NUM                                                        \
-	1 // The number of msg buffers per connection. Only 1 supported, for now.
+#define RPC_MSG_BUF_NUM 8
 
 enum rpc_channel_type {
 	RPC_CH_RDMA = 1,

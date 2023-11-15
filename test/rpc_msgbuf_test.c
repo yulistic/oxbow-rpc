@@ -1,3 +1,4 @@
+/* Run the rpc server first. (rpc_server_test.c) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -44,14 +45,11 @@ int main(int argc, char **argv)
 	char *data = "hello world";
 	struct rpc_ch_info *rpc_cli_ch;
 	threadpool handler_thpool;
-	int ret, msgbuf_id;
+	int ret, i;
+	int msgbuf_id[RPC_MSG_BUF_NUM];
 	enum rpc_channel_type ch_type;
 	sem_t sem;
 	struct rpc_req_param req_param;
-
-	// To get rid of unused parameter warning.
-	argc = argc;
-	argv = argv;
 
 	if (argc < 2) {
 		printf("Usage: %s [rdma|shmem]\n", argv[0]);
@@ -107,14 +105,22 @@ int main(int argc, char **argv)
 						    .data = data,
 						    .sem = NULL };
 
-		// Send a message.
-		log_info("Sending RPC message:%s", data);
-		msgbuf_id = send_rpc_msg_to_server(&req_param);
+		// Send messages (consume msg buffers).
+		for (i = 0; i < RPC_MSG_BUF_NUM + 1; i++) {
+			log_info("Sending RPC message:%s", data);
+			msgbuf_id[i] = send_rpc_msg_to_server(&req_param);
+			log_info("msgbuf_id[%d]=%d", i, msgbuf_id);
+		}
 
-		log_info("Waiting server response.");
-		wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id, 1);
+		log_info("All RPC messages send.");
+		sleep(3);
+
+		// Free msg buffers.
+		for (i = 0; i < RPC_MSG_BUF_NUM + 1; i++) {
+			log_info("Waiting server response. i=%d", i);
+			wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id[i], 1);
+		}
 		log_info("Resume the main thread.");
-
 		break;
 	}
 

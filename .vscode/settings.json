@@ -16,12 +16,14 @@
 		"atomic": "cpp",
 		"cassert": "c",
 		"shm.h": "c",
-		"cerrno": "c"
+		"cerrno": "c",
+		"stop_token": "c",
+		"thread": "c"
 	},
 	"workbench.editor.navigationScope": "editorGroup",
 	"cmake.configureOnOpen": false,
 	"vim.easymotion": true,
-	"C_Cpp.default.compileCommands": "build/vscode_compile_commands.json",
+	"C_Cpp.default.compileCommands": "build/compile_commands.json",
 	"rewrap.autoWrap.enabled": true,
 	"mesonbuild.buildFolder": "build"
 }
