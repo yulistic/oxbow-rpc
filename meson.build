@@ -22,6 +22,7 @@ cc = meson.get_compiler('c')
 rdma_inc = include_directories('lib/rdma-core/build/include')
 ibverbs_dep = dependency('libibverbs', method : 'pkg-config', static : false)
 rdmacm_dep = dependency('librdmacm', method : 'pkg-config', static : false)
+thread_dep = dependency('threads') # -pthread
 
 ## Logging library.
 log_inc = include_directories('lib/log.c/src')
@@ -59,7 +60,7 @@ oxbow_rpc_lib = shared_library('oxbow_rpc',
                           # version : '1.1.1',
                           # soversion : '0',
                           include_directories : [inc, log_inc, thpool_inc, rdma_inc, bitarr_inc],
-                          dependencies : [ibverbs_dep, rdmacm_dep, bitarr_dep], # Shared library
+                          dependencies : [ibverbs_dep, rdmacm_dep, bitarr_dep, thread_dep], # Shared library
                           c_args: ['-DLOG_USE_COLOR'], # Print with color by log.c library.
                           # link_args : ['-Wl,-rpath=' + rdma_lib_dir],
                           )

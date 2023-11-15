@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <rpc.h>
+#include "rpc.h"
 #include "bit_array.h"
 
 // TODO: Need to profile this lock contention.
