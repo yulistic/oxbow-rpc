@@ -1,6 +1,6 @@
 project('oxbow-rpc', 'c',
   version : '0.1',
-  default_options : ['warning_level=3'])
+  default_options : ['warning_level=3', 'buildtype=release'])
 
 proj_root = meson.source_root()
 build_root = meson.build_root()
