@@ -114,14 +114,15 @@ static int alloc_server_id(void)
  * 
  * @param key 
  * @param size in byte.
+ * @param perm permission
  * @return int 
  */
-int create_shm_seg(key_t key, uint64_t size)
+int create_shm_seg(key_t key, uint64_t size, int perm)
 {
 	int shmid, err_num;
 
 	// Create shared memory segment
-	shmid = shmget(key, size, IPC_CREAT | 0666);
+	shmid = shmget(key, size, IPC_CREAT | perm);
 	if (shmid < 0) {
 		err_num = errno;
 		if (err_num == EINVAL) {
@@ -441,7 +442,7 @@ void register_client(struct shmem_ch_cb *cb, int client_fd, key_t *shm_key,
 	client->cb_id = cb_id;
 	client->shmem_key = generate_shm_key(cb_id);
 
-	client->shmem_id = create_shm_seg(client->shmem_key, shm_size);
+	client->shmem_id = create_shm_seg(client->shmem_key, shm_size, 0666);
 	if (client->shmem_id == -1) {
 		log_error("shm_get failed. cb_id=%d shmem_key=%lu", cb_id,
 			  client->shmem_key);
@@ -723,9 +724,8 @@ static void init_shmem_server(struct shmem_ch_cb *cb)
 
 	// Create CQ shmem for per server cq event thread.
 	server->cq_key = generate_shm_key(server->cq_cb_id);
-	server->cq_shmem_id =
-		create_shm_seg(server->cq_key,
-			       sizeof(sem_t)); // Rounded up to PAGESIZE.
+	server->cq_shmem_id = create_shm_seg(server->cq_key, sizeof(sem_t),
+					     0666); // Rounded up to PAGESIZE.
 	if (server->cq_shmem_id == -1) {
 		log_error("Getting client's shmem(shmget) failed.");
 		goto err1;
