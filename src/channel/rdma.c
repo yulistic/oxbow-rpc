@@ -17,6 +17,7 @@
 #include "rpc.h"
 
 #define RDMA_SQ_DEPTH 16
+#define RDMA_RQ_DEPTH 16
 
 // TODO: to be deleted.
 #define RPING_MSG_FMT "rdma-ping-%d: "
@@ -212,7 +213,7 @@ static int create_qp(struct rdma_ch_cb *cb)
 
 	// TODO: Check configuration.
 	init_attr.cap.max_send_wr = RDMA_SQ_DEPTH;
-	init_attr.cap.max_recv_wr = 2;
+	init_attr.cap.max_recv_wr = RDMA_RQ_DEPTH;
 	init_attr.cap.max_recv_sge = 1;
 	init_attr.cap.max_send_sge = 1;
 	init_attr.qp_type = IBV_QPT_RC;
@@ -825,6 +826,8 @@ void *run_server(void *arg)
 		goto err;
 	}
 
+	log_info("Waiting client's connect request.");
+
 	while (1) {
 		sem_wait(&listening_cb->sem);
 		if (listening_cb->state != CONNECT_REQUEST) {
@@ -1147,8 +1150,13 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 			printf("Creating server daemon failed.\n");
 			goto out1;
 		}
-	} else
-		run_client(cb);
+	} else {
+		ret = run_client(cb);
+		if (ret) {
+			printf("Running client failed.\n");
+			goto out1;
+		}
+	}
 
 	return cb;
 
