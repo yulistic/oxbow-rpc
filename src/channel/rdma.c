@@ -979,7 +979,8 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 
 	log_info(
 		"Sending RDMA msg: seqn=%lu sem_addr=%lx rpc_ch_addr=%lx data=\"%s\"",
-		msg->seq_num, (uint64_t)sem, (uint64_t)rpc_ch_addr, msg->data);
+		seqn ? seqn : new_seqn, (uint64_t)sem, (uint64_t)rpc_ch_addr,
+		msg->data);
 
 	ret = ibv_post_send(cb->qp, &mb_ctx->sq_wr, &bad_wr);
 	if (ret) {

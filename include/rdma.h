@@ -1,5 +1,5 @@
-#ifndef _RDMA_H_
-#define _RDMA_H_
+#ifndef _RPC_RDMA_H_
+#define _RPC_RDMA_H_
 #include <rdma/rdma_cma.h>
 #include <sys/types.h>
 #include <semaphore.h>
