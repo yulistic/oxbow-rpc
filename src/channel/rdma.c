@@ -514,10 +514,16 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 
 	mb_ctx = &cb->buf_ctxs[msgbuf_id];
 
-	msg->header.seqn = be64toh(mb_ctx->recv_buf->seq_num);
-	msg->header.sem = (sem_t *)be64toh(mb_ctx->recv_buf->sem_addr);
+	msg->header.seqn = mb_ctx->recv_buf->seq_num;
+	be64toh(msg->header.seqn);
+
+	msg->header.sem = (sem_t *)mb_ctx->recv_buf->sem_addr;
+	be64toh((__be64)msg->header.sem);
+
 	msg->header.client_rpc_ch =
-		(struct rpc_ch_info *)be64toh(mb_ctx->recv_buf->rpc_ch_addr);
+		(struct rpc_ch_info *)mb_ctx->recv_buf->rpc_ch_addr;
+	be64toh((__be64)msg->header.client_rpc_ch);
+
 	// FIXME: Copy fixed size, currently.
 	memcpy(&msg->data[0], &mb_ctx->recv_buf->data[0], cb->msgdata_size);
 
@@ -527,7 +533,8 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 
 	rpc_param->msgbuf_id = msgbuf_id;
 	rpc_param->client_rpc_ch =
-		(struct rpc_ch_info *)be64toh(mb_ctx->recv_buf->rpc_ch_addr);
+		(struct rpc_ch_info *)mb_ctx->recv_buf->rpc_ch_addr;
+	be64toh((__be64)rpc_param->client_rpc_ch);
 	rpc_param->param = param;
 	rpc_param->user_msg_handler_cb = cb->user_msg_handler_cb;
 
@@ -540,9 +547,15 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 	thpool_add_work(cb->msg_handler_thpool, cb->rpc_msg_handler_cb,
 			(void *)rpc_param);
 
-	// cb->remote_rkey = be32toh(cb->recv_buf.rkey);
-	// cb->remote_addr = be64toh(cb->recv_buf.buf);
-	// cb->remote_len = be32toh(cb->recv_buf.size);
+	// cb->remote_rkey = cb->recv_buf.rkey;
+	// be32toh(cb->remote_rkey);
+
+	// cb->remote_addr = cb->recv_buf.buf;
+	// be64toh(cb->remote_addr);
+
+	// cb->remote_len = cb->recv_buf.size;
+	// be32toh(cb->remote_len);
+
 	// log_debug("Received rkey %x addr %" PRIx64 " len %d from peer",
 	// 	  cb->remote_rkey, cb->remote_addr, cb->remote_len);
 
@@ -598,7 +611,7 @@ static int cq_event_handler(struct rdma_ch_cb *cb)
 			break;
 
 		case IBV_WC_RECV:
-			log_debug("recv completion\n");
+			log_debug("recv completion");
 			ret = receive_msg(cb, &wc);
 			if (ret) {
 				log_error("recv wc error: ret=%d", ret);
@@ -922,12 +935,17 @@ static int connect_client(struct rdma_ch_cb *cb)
 // {
 // 	struct comm_rdma_mr_info *info = &cb->send_buf;
 
-// 	info->buf = htobe64((uint64_t)(unsigned long)buf);
-// 	info->rkey = htobe32(mr->rkey);
-// 	info->size = htobe32(cb->size);
+// 	info->buf =(uint64_t)(unsigned long)buf;
+//  	htobe64(info->buf);
 
-// 	log_debug("RDMA addr %" PRIx64 " rkey %x len %d", be64toh(info->buf),
-// 		  be32toh(info->rkey), be32toh(info->size));
+// 	info->rkey = mr->rkey;
+// 	htobe32(info->rkey);
+
+// 	info->size = cb->size;
+//	htobe32(info->size);
+
+// 	log_debug("RDMA addr %" PRIx64 " rkey %x len %d", buf,
+// 		  mr->rkey, cb->size);
 // }
 
 static inline uint64_t alloc_seqn(struct msgbuf_ctx *mb_ctx)
@@ -958,14 +976,24 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 	mb_ctx = &cb->buf_ctxs[msgbuf_id];
 
 	msg = mb_ctx->send_buf;
+
 	if (!seqn) {
 		new_seqn = alloc_seqn(mb_ctx);
-		msg->seq_num = htobe64(new_seqn);
-	} else {
-		msg->seq_num = htobe64(seqn);
-	}
-	msg->sem_addr = htobe64((uint64_t)(unsigned long)sem);
-	msg->rpc_ch_addr = htobe64((uint64_t)(unsigned long)rpc_ch_addr);
+		msg->seq_num = new_seqn;
+	} else
+		msg->seq_num = seqn;
+
+	log_info(
+		"Sending RDMA msg: seqn=%lu sem_addr=%lx rpc_ch_addr=%lx data=\"%s\"",
+		msg->seq_num, (uint64_t)sem, (uint64_t)rpc_ch_addr, msg->data);
+
+	htobe64(msg->seq_num);
+
+	msg->sem_addr = (__be64)sem;
+	htobe64(msg->sem_addr);
+
+	msg->rpc_ch_addr = (__be64)rpc_ch_addr;
+	htobe64(msg->rpc_ch_addr);
 
 	// Copy and send fixed size, currently.
 	// FIXME: Can we copy only the meaningful data? memset will be required.
@@ -976,11 +1004,6 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 	// memcpy(&msg->data[0], data, data_size);
 	// remains = cb->msgdata_size - data_size;
 	// memset(&msg->data[data_size], 0, remains);
-
-	log_info(
-		"Sending RDMA msg: seqn=%lu sem_addr=%lx rpc_ch_addr=%lx data=\"%s\"",
-		seqn ? seqn : new_seqn, (uint64_t)sem, (uint64_t)rpc_ch_addr,
-		msg->data);
 
 	ret = ibv_post_send(cb->qp, &mb_ctx->sq_wr, &bad_wr);
 	if (ret) {
@@ -1117,7 +1140,8 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	cb->state = IDLE;
 	cb->size = cb->msgbuf_size; // msg buffer size.
 	cb->sin.ss_family = AF_INET;
-	cb->port = htobe16(attr->port);
+	cb->port = attr->port;
+	htobe16(cb->port);
 	sem_init(&cb->sem, 0, 0); // FIXME: Where is it used?
 
 	if (!cb->server) {
