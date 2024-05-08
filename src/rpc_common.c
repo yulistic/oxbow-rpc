@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "rpc.h"
 #include "bit_array.h"
+#include <unistd.h> // sleep
 
 // TODO: Need to profile this lock contention.
 uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch)
@@ -19,8 +20,10 @@ uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch)
 
 		if (ret)
 			break;
-		else
-			log_info("Failed to alloc a msgbuf id.");
+		else {
+			log_info("Failed to alloc a msgbuf id. (sleep 1 sec)");
+			sleep(1);
+		}
 	}
 
 	// log_debug("[MSGBUF] alloc msgbuf=%lu", bit_id);
