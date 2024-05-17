@@ -12,9 +12,13 @@
 // #include <netinet/in.h>
 // #include <infiniband/arch.h>
 #include <rdma/rdma_cma.h>
+#include "global.h"
 #include "rdma.h"
-#include "log.h"
 #include "rpc.h"
+
+// Overwrite global print config.
+// #define ENABLE_PRINT 1
+#include "log.h"
 
 #define RDMA_SQ_DEPTH 16
 #define RDMA_RQ_DEPTH 16

@@ -1,9 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "global.h"
 #include "rpc.h"
-#include "log.h"
 #include "rdma.h"
 #include "shmem.h"
+
+// Overwrite global print config.
+// #define ENABLE_PRINT 1
+#include "log.h"
 
 void server_rpc_msg_handler(void *arg)
 {

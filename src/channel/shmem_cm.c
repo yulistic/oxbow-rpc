@@ -7,8 +7,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include "global.h"
 #include "shmem.h"
 #include "shmem_cm.h"
+
+// Overwrite global print config.
+// #define ENABLE_PRINT 1
 #include "log.h"
 
 #define MAX_EVENTS 32

@@ -4,7 +4,6 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <pthread.h>
-#include "log.h"
 #include "thpool.h"
 
 #define RPC_MSG_BUF_NUM 8

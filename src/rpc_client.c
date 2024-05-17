@@ -1,12 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include "global.h"
 #include "rpc.h"
-#include "log.h"
 #include "rdma.h"
 #include "shmem.h"
 #include "shmem_cm.h"
 #include "bit_array.h"
+
+// Overwrite global print config.
+// #define ENABLE_PRINT 1
+#include "log.h"
 
 /**
  * @brief Callback function of RPC layer. It frees RPC layer resources.

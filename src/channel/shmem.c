@@ -6,9 +6,13 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <assert.h>
+#include "global.h"
 #include "shmem.h"
 #include "shmem_cm.h"
 #include "rpc.h"
+
+// Per file debug print setup.
+#define ENABLE_PRINT 0
 #include "log.h"
 
 #define SHM_KEY_SEED 9367 // arbitrary value.
