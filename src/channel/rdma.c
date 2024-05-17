@@ -121,6 +121,12 @@ static int cma_event_handler(struct rdma_cm_id *cma_id,
 		ret = -1;
 		break;
 
+	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
+		fprintf(stderr, "%s TIMEWAIT EXIT...\n",
+			cb->server ? "server" : "client");
+		ret = 1; // Exit without an error.
+		break;
+
 	default:
 		fprintf(stderr, "unhandled event: %s, ignoring\n",
 			rdma_event_str(event->event));
@@ -144,9 +150,13 @@ void *cm_thread(void *arg)
 		}
 		ret = cma_event_handler(event->id, event);
 		rdma_ack_cm_event(event);
-		if (ret)
+		if (ret == 1)
+			break;
+		else if (ret)
 			exit(ret);
 	}
+
+	return NULL;
 }
 
 static int bind_server(struct rdma_ch_cb *cb)
