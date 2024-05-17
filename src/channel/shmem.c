@@ -12,7 +12,7 @@
 #include "rpc.h"
 
 // Per file debug print setup.
-#define ENABLE_PRINT 0
+// #define ENABLE_PRINT 1
 #include "log.h"
 
 #define SHM_KEY_SEED 9367 // arbitrary value.
