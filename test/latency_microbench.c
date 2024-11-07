@@ -9,7 +9,6 @@
 #include "time_stats.h"
 
 #define RDMA_PORT 7174
-#define MAX_MSG_DATA_SIZE 4096
 #define MSG_CNT 10000
 #define LAT_PROFILE
 
@@ -207,11 +206,11 @@ void run_server(void)
 
 	if (g_conf.rdma) {
 		ret = init_rpc_server(RPC_CH_RDMA, NULL, RDMA_PORT,
-				      MAX_MSG_DATA_SIZE, server_msg_handler,
+				      g_conf.msg_size, server_msg_handler,
 				      server_handler_thpool);
 	} else {
 		ret = init_rpc_server(RPC_CH_SHMEM, g_shmem_path, 0,
-				      MAX_MSG_DATA_SIZE, server_msg_handler,
+				      g_conf.msg_size, server_msg_handler,
 				      server_handler_thpool);
 	}
 
@@ -271,13 +270,13 @@ void init_client(void)
 	if (g_conf.rdma) {
 		g_rpc_cli_ch =
 			init_rpc_client(RPC_CH_RDMA, g_conf.server_ip_addr,
-					RDMA_PORT, MAX_MSG_DATA_SIZE,
+					RDMA_PORT, g_conf.msg_size,
 					client_rdma_msg_handler,
 					client_handler_thpool);
 		log_info("Client is connected to server.");
 	} else {
 		g_rpc_cli_ch = init_rpc_client(
-			RPC_CH_SHMEM, g_shmem_path, 0, MAX_MSG_DATA_SIZE,
+			RPC_CH_SHMEM, g_shmem_path, 0, g_conf.msg_size,
 			rpc_shmem_client_handler,
 			NULL); // handler thpool is not required.
 		log_info("Client is connected to server.");
@@ -416,23 +415,24 @@ void report_server_stats(void)
 	}
 }
 
-void signal_handler()
+void signal_handler(int signum)
 {
 	if (g_conf.server) {
 		report_server_stats();
 	}
 
-	signal(SIGINT, SIG_DFL);
+	raise(SIGTERM);
 }
 
 int main(int argc, char **argv)
 {
 	struct sigaction action;
 	memset(&action, 0, sizeof(action));
-	action.sa_handler = signal_handler;
+	if (!g_conf.server) {
+		action.sa_handler = signal_handler;
+	}
 	sigaction(SIGUSR1, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
-	sigaction(SIGTERM, &action, NULL);
 
 	log_set_level(LOGC_ERROR);
 

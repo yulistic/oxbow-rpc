@@ -561,7 +561,7 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 	msg->header.client_rpc_ch = mb_ctx->req_buf->rpc_ch;
 
 	// Copy and send fixed size, currently.
-	// FIXME: Can we copy only the meaningful data? memset will be required.
+	// OPTIMIZE: Can we copy only the meaningful data? memset will be required.
 	// memset(...);
 	memcpy(&msg->data[0], &mb_ctx->req_buf->data[0], cb->msgdata_size);
 
@@ -664,6 +664,9 @@ static void *handle_event(void *arg)
 	return NULL;
 }
 
+// For test.
+// #define MSG_INTERVAL_MICROSEC 1000
+
 // Server function.
 int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 			char *data, int client_id, int msgbuf_id, uint64_t seqn)
@@ -682,13 +685,22 @@ int send_shmem_response(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	msg->seq_num = seqn;
 	msg->rpc_ch = rpc_ch;
 
+	// printf("Sending SHMEM msg: seqn=%lu &msg->data[0]=0x%lx data=\"%s\"(0x%lx) cb->msgdata_size=%u\n",
+	//        msg->seq_num, (uint64_t)&msg->data[0], data, (uint64_t)data,
+	//        cb->msgdata_size);
+
 	// Copy and send fixed size, currently.
 	// FIXME: Can we copy only the meaningful data? memset will be required.
 	// memset(&msg->data[0], 0, cb->msgdata_size);
+	// NOTE: If size of data < cb->msgdata_size, we should send data upto size of 'data'.
 	memcpy(&msg->data[0], data, cb->msgdata_size);
 
 	// log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=0x%lx data=\"%s\"",
 	// 	 msg->seq_num, (uint64_t)rpc_ch, msg->data);
+
+	// For test.
+	// Interval between messages. (To measure sleep overhead.)
+	// usleep(MSG_INTERVAL_MICROSEC);
 
 	// Notify client by post client's sem directly.
 	log_debug("Post sema of Client %d: address=0x%lx", client_id,

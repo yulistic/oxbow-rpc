@@ -96,4 +96,33 @@ void free_msgbuf_id(struct rpc_ch_info *rpc_ch, uint64_t bit_id);
 void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			     int callback);
 int get_max_msgdata_size(struct rpc_ch_info *rpc_ch);
+
+#define BUSYWAIT_TIME_MICROSEC 0
+
+// Busy wait for a given time before sem_wait (sleep).
+static inline void busywait_sem_wait(sem_t *sem)
+{
+	struct timespec start, end;
+
+	if (BUSYWAIT_TIME_MICROSEC == 0)
+		goto sleep_and_wait;
+
+	clock_gettime(CLOCK_MONOTONIC, &start);
+
+	while (1) {
+		if (sem_trywait(sem) == 0)
+			return;
+
+		clock_gettime(CLOCK_MONOTONIC, &end);
+
+		long elapsed_time = (end.tv_sec - start.tv_sec) * 1000000L +
+				    (end.tv_nsec - start.tv_nsec) / 1000L;
+		if (elapsed_time >= BUSYWAIT_TIME_MICROSEC)
+			break;
+	}
+
+sleep_and_wait:
+	sem_wait(sem);
+}
+
 #endif
