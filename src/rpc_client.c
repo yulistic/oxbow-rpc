@@ -61,8 +61,7 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 
 	// Wait for server's post.
 	log_debug("Waiting for the server's response. Sem-addr=0x%lx", sem);
-	sem_wait(sem);
-	// busywait_sem_wait(sem);
+	rpc_sem_wait(sem);
 	log_debug("Resume.");
 
 	// Execute callback functions

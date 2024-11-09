@@ -4,6 +4,7 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <pthread.h>
+#include "global.h"
 #include "thpool.h"
 
 #define RPC_MSG_BUF_NUM 8
@@ -97,14 +98,12 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			     int callback);
 int get_max_msgdata_size(struct rpc_ch_info *rpc_ch);
 
-#define BUSYWAIT_TIME_MICROSEC 0
-
 // Busy wait for a given time before sem_wait (sleep).
-static inline void busywait_sem_wait(sem_t *sem)
+static inline void busywait_sem_wait(sem_t *sem, long wait_time_usec)
 {
 	struct timespec start, end;
 
-	if (BUSYWAIT_TIME_MICROSEC == 0)
+	if (wait_time_usec == 0)
 		goto sleep_and_wait;
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
@@ -117,12 +116,39 @@ static inline void busywait_sem_wait(sem_t *sem)
 
 		long elapsed_time = (end.tv_sec - start.tv_sec) * 1000000L +
 				    (end.tv_nsec - start.tv_nsec) / 1000L;
-		if (elapsed_time >= BUSYWAIT_TIME_MICROSEC)
+		if (elapsed_time >= wait_time_usec)
 			break;
 	}
 
 sleep_and_wait:
 	sem_wait(sem);
 }
+
+#if (SEMA_MODE == 0) // Always sleep.
+
+static inline void rpc_sem_wait(sem_t *sem)
+{
+	sem_wait(sem);
+}
+
+#elif (SEMA_MODE == 1) // Hybrid polling.
+
+#define BUSYWAIT_TIME_MICROSEC 1000 // 1 millisecond.
+
+static inline void rpc_sem_wait(sem_t *sem)
+{
+	busywait_sem_wait(sem, BUSYWAIT_TIME_MICROSEC);
+}
+
+#elif (SEMA_MODE == 2) // Always busywait.
+
+static inline void rpc_sem_wait(sem_t *sem)
+{
+	busywait_sem_wait(sem, 100000000); // 100 seconds.
+}
+
+#else
+#error "Invalid SEMA_MODE value. Must be 0, 1, or 2."
+#endif
 
 #endif

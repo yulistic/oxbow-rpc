@@ -9,7 +9,7 @@
 #include "time_stats.h"
 
 #define RDMA_PORT 7174
-#define MSG_CNT 10000
+#define MSG_CNT 100000
 #define LAT_PROFILE
 
 struct bench_config {

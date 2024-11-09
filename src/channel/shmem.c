@@ -636,7 +636,7 @@ static void *handle_event(void *arg)
 		pthread_testcancel();
 
 		// Producer will post sem.
-		sem_wait(server->cq_sem);
+		rpc_sem_wait(server->cq_sem);
 
 		// Lookup client bitmap.
 		cur = 0;
