@@ -427,12 +427,6 @@ void signal_handler(int signum)
 int main(int argc, char **argv)
 {
 	struct sigaction action;
-	memset(&action, 0, sizeof(action));
-	if (!g_conf.server) {
-		action.sa_handler = signal_handler;
-	}
-	sigaction(SIGUSR1, &action, NULL);
-	sigaction(SIGINT, &action, NULL);
 
 	log_set_level(LOGC_ERROR);
 
@@ -445,6 +439,13 @@ int main(int argc, char **argv)
 	g_conf.server_thread_num = 1;
 
 	parse_opts(argc, argv);
+
+	memset(&action, 0, sizeof(action));
+	if (g_conf.server) {
+		action.sa_handler = signal_handler;
+	}
+	sigaction(SIGUSR1, &action, NULL);
+	sigaction(SIGINT, &action, NULL);
 
 	if (!g_conf.tput) {
 		printf("There is one thread in the latency bench.\n");
