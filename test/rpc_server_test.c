@@ -96,12 +96,12 @@ int main(int argc, char **argv)
 	case RPC_CH_RDMA:
 		ret = init_rpc_server(RPC_CH_RDMA, NULL, g_port,
 				      MAX_MSG_DATA_SIZE, server_msg_handler,
-				      handler_thpool);
+				      handler_thpool, NULL, NULL, NULL, NULL);
 		break;
 	case RPC_CH_SHMEM:
 		ret = init_rpc_server(RPC_CH_SHMEM, g_shmem_path, 0,
 				      MAX_MSG_DATA_SIZE, server_msg_handler,
-				      handler_thpool);
+				      handler_thpool, NULL, NULL, NULL, NULL);
 		break;
 	}
 

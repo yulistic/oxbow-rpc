@@ -35,6 +35,12 @@ struct rdma_ch_attr {
 		void *rpc_param); // rpc layer callback function.
 	void (*user_msg_handler_cb)(void *param); // user callback function.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
+	void (*on_connect)(
+		void *arg); // callback function when client is connected.
+	void *conn_arg; // Argument for on_connect callback.
+	void (*on_disconnect)(
+		void *arg); // callback function when client is disconnected.
+	void *disconn_arg; // Argument for on_disconnect callback.
 };
 
 // Message format including header.
@@ -93,6 +99,12 @@ struct rdma_ch_cb {
 	int msgheader_size; // A size of a header in a msg (msg buffer size - data size).
 	int msgdata_size; // A size of data in a msg (msg buffer size - header size). Given by user.
 	struct msgbuf_ctx *buf_ctxs;
+	void (*on_connect)(
+		void *arg); // callback function when client is connected.
+	void *conn_arg; // Argument for on_connect callback.
+	void (*on_disconnect)(
+		void *arg); // callback function when client is disconnected.
+	void *disconn_arg; // Argument for on_disconnect callback.
 	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
 	void (*user_msg_handler_cb)(void *param); // user's msg handler callback.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.

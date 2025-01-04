@@ -82,7 +82,10 @@ struct __attribute__((packed)) rpc_msg {
 
 int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 		    int max_msgdata_size, void (*msg_handler)(void *data),
-		    threadpool worker_thpool);
+		    threadpool worker_thpool, void (*on_connect)(void *arg),
+		    void *conn_arg, void (*on_disconnect)(void *arg),
+		    void *disconn_arg);
+
 struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 				    int port, int max_msgdata_size,
 				    void (*msg_handler)(void *data),

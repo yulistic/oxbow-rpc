@@ -798,6 +798,9 @@ static void *server_thread(void *arg)
 		goto err3;
 	}
 
+	// Connect callback.
+	cb->on_connect(cb);
+
 	while (cb->state != DISCONNECTED) {
 		sleep(1);
 	}
@@ -806,6 +809,9 @@ static void *server_thread(void *arg)
 
 	// pthread_cancel(cb->cqthread);
 	pthread_join(cb->cqthread, NULL);
+
+	// Disconnect callback.
+	cb->on_disconnect(cb);
 
 	free_buffers(cb);
 	free_qp(cb);
@@ -1135,6 +1141,10 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	cb->rpc_msg_handler_cb = attr->rpc_msg_handler_cb;
 	cb->user_msg_handler_cb = attr->user_msg_handler_cb;
 	cb->msg_handler_thpool = attr->msg_handler_thpool;
+	cb->on_connect = attr->on_connect;
+	cb->conn_arg = attr->conn_arg;
+	cb->on_disconnect = attr->on_disconnect;
+	cb->disconn_arg = attr->disconn_arg;
 
 	cb->buf_ctxs = calloc(cb->msgbuf_cnt, sizeof(struct msgbuf_ctx));
 	if (!cb->buf_ctxs) {

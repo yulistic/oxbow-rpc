@@ -207,11 +207,13 @@ void run_server(void)
 	if (g_conf.rdma) {
 		ret = init_rpc_server(RPC_CH_RDMA, NULL, RDMA_PORT,
 				      g_conf.msg_size, server_msg_handler,
-				      server_handler_thpool);
+				      server_handler_thpool, NULL, NULL, NULL,
+				      NULL);
 	} else {
 		ret = init_rpc_server(RPC_CH_SHMEM, g_shmem_path, 0,
 				      g_conf.msg_size, server_msg_handler,
-				      server_handler_thpool);
+				      server_handler_thpool, NULL, NULL, NULL,
+				      NULL);
 	}
 
 	if (ret) {

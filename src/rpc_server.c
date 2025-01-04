@@ -31,11 +31,17 @@ void server_rpc_msg_handler(void *arg)
  * @param max_msgdata_size The maximum size of a msg data in byte.
  * @param msg_handler Message handler callback function.
  * @param worker_thpool A worker thread pool that executes the handler callback function.
+ * @param on_connect Callback function when client is connected.
+ * @param on_disconnect Callback function when client is disconnected.
+ * @param conn_arg Argument for on_connect callback.
+ * @param disconn_arg Argument for on_disconnect callback.
  * @return 0 on success.
  */
 int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 		    int max_msgdata_size, void (*msg_handler)(void *data),
-		    threadpool worker_thpool)
+		    threadpool worker_thpool, void (*on_connect)(void *arg),
+		    void *conn_arg, void (*on_disconnect)(void *arg),
+		    void *disconn_arg)
 {
 	struct rdma_ch_attr rdma_attr;
 	struct shmem_ch_attr shmem_attr;
@@ -55,6 +61,10 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 		rdma_attr.rpc_msg_handler_cb = server_rpc_msg_handler;
 		rdma_attr.user_msg_handler_cb = msg_handler;
 		rdma_attr.msg_handler_thpool = worker_thpool;
+		rdma_attr.on_connect = on_connect;
+		rdma_attr.conn_arg = conn_arg;
+		rdma_attr.on_disconnect = on_disconnect;
+		rdma_attr.disconn_arg = disconn_arg;
 
 		rpc_ch->ch_cb = init_rdma_ch(&rdma_attr);
 		break;
@@ -66,6 +76,10 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 		shmem_attr.rpc_msg_handler_cb = server_rpc_msg_handler;
 		shmem_attr.user_msg_handler_cb = msg_handler;
 		shmem_attr.msg_handler_thpool = worker_thpool;
+		shmem_attr.on_connect = on_connect;
+		shmem_attr.conn_arg = conn_arg;
+		shmem_attr.on_disconnect = on_disconnect;
+		shmem_attr.disconn_arg = disconn_arg;
 		strcpy(shmem_attr.cm_socket_name, target);
 
 		rpc_ch->ch_cb = init_shmem_ch(&shmem_attr);

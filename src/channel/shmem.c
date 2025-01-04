@@ -632,6 +632,8 @@ static void *handle_event(void *arg)
 	cb = (struct shmem_ch_cb *)arg;
 	server = cb->server_state;
 
+	cb->on_connect(cb->conn_arg);
+
 	while (1) {
 		pthread_testcancel();
 
@@ -660,6 +662,8 @@ static void *handle_event(void *arg)
 		log_debug("[Event handler] Total %d events handled.",
 			  handled_total);
 	}
+
+	cb->on_disconnect(cb->disconn_arg);
 
 	return NULL;
 }
@@ -854,6 +858,10 @@ struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 	cb->rpc_msg_handler_cb = attr->rpc_msg_handler_cb;
 	cb->user_msg_handler_cb = attr->user_msg_handler_cb;
 	cb->msg_handler_thpool = attr->msg_handler_thpool;
+	cb->on_connect = attr->on_connect;
+	cb->conn_arg = attr->conn_arg;
+	cb->on_disconnect = attr->on_disconnect;
+	cb->disconn_arg = attr->disconn_arg;
 	strcpy(cb->cm_socket_name, attr->cm_socket_name);
 
 	if (cb->server) {

@@ -41,6 +41,12 @@ struct shmem_ch_attr {
 	void (*user_msg_handler_cb)(void *param); // user callback function.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
 	char cm_socket_name[108]; // shmem socket name for cm.
+	void (*on_connect)(
+		void *arg); // callback function when client is connected.
+	void *conn_arg; // Argument for on_connect callback.
+	void (*on_disconnect)(
+		void *arg); // callback function when client is disconnected.
+	void *disconn_arg; // Argument for on_disconnect callback.
 };
 
 struct shmem_client_state {
@@ -91,6 +97,12 @@ struct shmem_ch_cb {
 	int msgdata_size; // A size of data in a msg (msg buffer size - header size). Given by user.
 	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
 	void (*user_msg_handler_cb)(void *param); // user's msg handler callback.
+	void (*on_connect)(
+		void *arg); // callback function when client is connected.
+	void *conn_arg; // Argument for on_connect callback.
+	void (*on_disconnect)(
+		void *arg); // callback function when client is disconnected.
+	void *disconn_arg; // Argument for on_disconnect callback.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
 
 	char cm_socket_name[108]; // shmem socket name for cm.
