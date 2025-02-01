@@ -632,7 +632,8 @@ static void *handle_event(void *arg)
 	cb = (struct shmem_ch_cb *)arg;
 	server = cb->server_state;
 
-	cb->on_connect(cb->conn_arg);
+	if (cb->on_connect)
+		cb->on_connect(cb->conn_arg);
 
 	while (1) {
 		pthread_testcancel();
@@ -663,7 +664,8 @@ static void *handle_event(void *arg)
 			  handled_total);
 	}
 
-	cb->on_disconnect(cb->disconn_arg);
+	if (cb->on_disconnect)
+		cb->on_disconnect(cb->disconn_arg);
 
 	return NULL;
 }

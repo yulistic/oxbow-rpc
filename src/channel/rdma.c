@@ -799,7 +799,8 @@ static void *server_thread(void *arg)
 	}
 
 	// Connect callback.
-	cb->on_connect(cb);
+	if (cb->on_connect)
+		cb->on_connect(cb);
 
 	while (cb->state != DISCONNECTED) {
 		sleep(1);
@@ -811,7 +812,8 @@ static void *server_thread(void *arg)
 	pthread_join(cb->cqthread, NULL);
 
 	// Disconnect callback.
-	cb->on_disconnect(cb);
+	if (cb->on_disconnect)
+		cb->on_disconnect(cb);
 
 	free_buffers(cb);
 	free_qp(cb);
