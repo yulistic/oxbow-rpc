@@ -74,7 +74,7 @@ int main(int argc, char **argv)
 		rpc_cli_ch = init_rpc_client(RPC_CH_RDMA, g_ip_addr, g_port,
 					     MAX_MSG_DATA_SIZE,
 					     client_rdma_msg_handler,
-					     handler_thpool);
+					     handler_thpool, 0);
 		log_info("Client is connected to server.");
 
 		// Send a message.
@@ -94,10 +94,10 @@ int main(int argc, char **argv)
 
 		break;
 	case RPC_CH_SHMEM:
-		rpc_cli_ch = init_rpc_client(
-			RPC_CH_SHMEM, g_shmem_path, 0, MAX_MSG_DATA_SIZE,
-			rpc_shmem_client_handler,
-			NULL); // handler thpool is not required.
+		rpc_cli_ch = init_rpc_client(RPC_CH_SHMEM, g_shmem_path, 0,
+					     MAX_MSG_DATA_SIZE,
+					     rpc_shmem_client_handler,
+					     handler_thpool, SHM_KEY_SEED);
 		log_info("Client is connected to server.");
 
 		// Set param.

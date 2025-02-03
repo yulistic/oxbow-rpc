@@ -36,6 +36,7 @@ struct shmem_ch_attr {
 	int server; /* 0 iff client */
 	int msgbuf_cnt; // The number of msg buffers.
 	int msgdata_size; // The size of a message data.
+	key_t shm_key_seed; // Base key for shared memory segments.
 	void (*rpc_msg_handler_cb)(
 		void *rpc_param); // rpc layer callback function.
 	void (*user_msg_handler_cb)(void *param); // user callback function.
@@ -106,6 +107,7 @@ struct shmem_ch_cb {
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
 
 	char cm_socket_name[108]; // shmem socket name for cm.
+	key_t shm_key_seed; // Base key for shared memory segments.
 
 	// for client use.
 	// int cb_id; // Client's cb_id;

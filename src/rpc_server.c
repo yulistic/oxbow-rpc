@@ -41,7 +41,7 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 		    int max_msgdata_size, void (*msg_handler)(void *data),
 		    threadpool worker_thpool, void (*on_connect)(void *arg),
 		    void *conn_arg, void (*on_disconnect)(void *arg),
-		    void *disconn_arg)
+		    void *disconn_arg, key_t shm_key_seed)
 {
 	struct rdma_ch_attr rdma_attr;
 	struct shmem_ch_attr shmem_attr;
@@ -80,6 +80,7 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 		shmem_attr.conn_arg = conn_arg;
 		shmem_attr.on_disconnect = on_disconnect;
 		shmem_attr.disconn_arg = disconn_arg;
+		shmem_attr.shm_key_seed = shm_key_seed;
 		strcpy(shmem_attr.cm_socket_name, target);
 
 		rpc_ch->ch_cb = init_shmem_ch(&shmem_attr);

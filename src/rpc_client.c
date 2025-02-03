@@ -98,7 +98,8 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 				    int port, int max_msgdata_size,
 				    void (*msg_handler)(void *data),
-				    threadpool worker_thpool)
+				    threadpool worker_thpool,
+				    key_t shm_key_seed)
 {
 	struct rdma_ch_attr rdma_attr;
 	struct shmem_ch_attr shmem_attr;
@@ -132,6 +133,7 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 		break;
 
 	case RPC_CH_SHMEM:
+		shmem_attr.shm_key_seed = shm_key_seed;
 		shmem_attr.server = is_server;
 		shmem_attr.msgbuf_cnt = RPC_MSG_BUF_NUM;
 		shmem_attr.msgdata_size = max_msgdata_size;

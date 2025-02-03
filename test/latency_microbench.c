@@ -12,6 +12,8 @@
 #define MSG_CNT 100000
 #define LAT_PROFILE
 
+#define SHM_KEY_SEED 9367 // arbitrary value.
+
 struct bench_config {
 	int tput; // Run throughput bench.
 	int msg_size; // in byte.
@@ -208,12 +210,12 @@ void run_server(void)
 		ret = init_rpc_server(RPC_CH_RDMA, NULL, RDMA_PORT,
 				      g_conf.msg_size, server_msg_handler,
 				      server_handler_thpool, NULL, NULL, NULL,
-				      NULL);
+				      NULL, NULL);
 	} else {
 		ret = init_rpc_server(RPC_CH_SHMEM, g_shmem_path, 0,
 				      g_conf.msg_size, server_msg_handler,
 				      server_handler_thpool, NULL, NULL, NULL,
-				      NULL);
+				      NULL, SHM_KEY_SEED);
 	}
 
 	if (ret) {
@@ -274,13 +276,14 @@ void init_client(void)
 			init_rpc_client(RPC_CH_RDMA, g_conf.server_ip_addr,
 					RDMA_PORT, g_conf.msg_size,
 					client_rdma_msg_handler,
-					client_handler_thpool);
+					client_handler_thpool, 0);
 		log_info("Client is connected to server.");
 	} else {
-		g_rpc_cli_ch = init_rpc_client(
-			RPC_CH_SHMEM, g_shmem_path, 0, g_conf.msg_size,
-			rpc_shmem_client_handler,
-			NULL); // handler thpool is not required.
+		g_rpc_cli_ch =
+			init_rpc_client(RPC_CH_SHMEM, g_shmem_path, 0,
+					g_conf.msg_size,
+					rpc_shmem_client_handler,
+					client_handler_thpool, SHM_KEY_SEED);
 		log_info("Client is connected to server.");
 	}
 

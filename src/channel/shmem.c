@@ -15,8 +15,6 @@
 // #define ENABLE_PRINT 1
 #include "log.h"
 
-#define SHM_KEY_SEED 9367 // arbitrary value.
-
 /**
  * @brief
  * There is only one server in a channel.
@@ -328,11 +326,11 @@ void init_shmem_msgbuf_ctx_in_client(struct shmem_ch_cb *cb)
  * @param cb_id 
  * @return key_t 
  */
-key_t generate_shm_key(int cb_id)
+key_t generate_shm_key(struct shmem_ch_cb *cb, int cb_id)
 {
 	// FIXME: Use cb_id as a key. If we create a key with hashing, server
 	// should manage mapping table between cb_id and key.
-	return cb_id + SHM_KEY_SEED;
+	return cb_id + cb->shm_key_seed;
 }
 
 /**
@@ -362,11 +360,11 @@ int get_cb_id_with_sockfd(struct shmem_ch_cb *server_cb, int client_fd)
  * @param key 
  * @return int 
  */
-int get_cb_id_with_key(key_t key)
+int get_cb_id_with_key(key_t key, key_t seed)
 {
 	// FIXME: Use cb_id as a key. If we create a key with hashing, server
 	// should manage mapping table between cb_id and key.
-	return (int)(key - SHM_KEY_SEED);
+	return (int)(key - seed);
 }
 
 /**
@@ -443,7 +441,7 @@ void register_client(struct shmem_ch_cb *cb, int client_fd, key_t *shm_key,
 
 	// Create & attach shmem seg.
 	client->cb_id = cb_id;
-	client->shmem_key = generate_shm_key(cb_id);
+	client->shmem_key = generate_shm_key(cb, cb_id);
 
 	client->shmem_id = create_shm_seg(client->shmem_key, shm_size);
 	if (client->shmem_id == -1) {
@@ -521,7 +519,7 @@ void deregister_client_with_key(struct shmem_ch_cb *server_cb, key_t client_key)
 	int cb_id;
 
 	server = server_cb->server_state;
-	cb_id = get_cb_id_with_key(client_key);
+	cb_id = get_cb_id_with_key(client_key, server_cb->shm_key_seed);
 
 	bit_array_clear_bit(server->client_bitmap, cb_id);
 	free(server->clients[cb_id]);
@@ -744,7 +742,7 @@ static void init_shmem_server(struct shmem_ch_cb *cb)
 	assert(server->cq_cb_id > MAX_CLIENT_CONNECTION);
 
 	// Create CQ shmem for per server cq event thread.
-	server->cq_key = generate_shm_key(server->cq_cb_id);
+	server->cq_key = generate_shm_key(cb, server->cq_cb_id);
 	server->cq_shmem_id =
 		create_shm_seg(server->cq_key,
 			       sizeof(sem_t)); // Rounded up to PAGESIZE.
@@ -851,6 +849,9 @@ struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	// Store the seed value
+	cb->shm_key_seed = attr->shm_key_seed;
 
 	cb->server = attr->server;
 	cb->msgbuf_cnt = attr->msgbuf_cnt;
