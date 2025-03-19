@@ -153,7 +153,7 @@ void handle_cm_msg(struct shmem_ch_cb *server_cb, int client_fd,
 
 static int set_nonblocking(int sockfd)
 {
-	if (fcntl(sockfd, F_SETFD, fcntl(sockfd, F_GETFD, 0) | O_NONBLOCK) ==
+	if (fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL, 0) | O_NONBLOCK) ==
 	    -1) {
 		log_error("Failed to set server socket non-blocking.");
 		return -1;
@@ -178,18 +178,23 @@ int accept_client_connection(int server_fd, struct sockaddr_un *client_addr,
 	unsigned int len;
 	int client_fd;
 
-	len = sizeof(struct sockaddr_un);
-	client_fd = accept(server_fd, (struct sockaddr *)client_addr, &len);
-	if (client_fd == -1) {
-		log_error("shmem cm accept failed.");
-		return -1;
+	while (1) {
+		len = sizeof(struct sockaddr_un);
+		client_fd =
+			accept(server_fd, (struct sockaddr *)client_addr, &len);
+		if (client_fd == -1) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				break;
+			log_error("shmem cm accept failed.");
+			return -1;
+		}
+
+		log_debug("Accept client socket fd=%d", client_fd);
+		set_nonblocking(client_fd);
+		epoll_ctl_add(epfd, client_fd,
+			      EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLHUP);
 	}
 
-	log_debug("Accept client socket fd=%d", client_fd);
-
-	set_nonblocking(client_fd);
-	epoll_ctl_add(epfd, client_fd,
-		      EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLHUP);
 	return 0;
 }
 
