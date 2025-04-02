@@ -46,7 +46,7 @@ int main(int argc, char **argv)
 	struct rpc_ch_info *rpc_cli_ch;
 	threadpool handler_thpool;
 	int ret, i;
-	int msgbuf_id[RPC_MSG_BUF_NUM];
+	int msgbuf_id[RPC_SHMEM_MSG_BUF_NUM];
 	enum rpc_channel_type ch_type;
 	sem_t sem;
 	struct rpc_req_param req_param;
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
 						    .sem = NULL };
 
 		// Send messages (consume msg buffers).
-		for (i = 0; i < RPC_MSG_BUF_NUM + 1; i++) {
+		for (i = 0; i < RPC_SHMEM_MSG_BUF_NUM + 1; i++) {
 			log_info("Sending RPC message:%s", data);
 			msgbuf_id[i] = send_rpc_msg_to_server(&req_param);
 			log_info("msgbuf_id[%d]=%d", i, msgbuf_id);
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
 		sleep(3);
 
 		// Free msg buffers.
-		for (i = 0; i < RPC_MSG_BUF_NUM + 1; i++) {
+		for (i = 0; i < RPC_SHMEM_MSG_BUF_NUM + 1; i++) {
 			log_info("Waiting server response. i=%d", i);
 			wait_rpc_shmem_response(rpc_cli_ch, msgbuf_id[i], 1);
 		}

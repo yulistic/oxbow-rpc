@@ -7,7 +7,8 @@
 #include "global.h"
 #include "thpool.h"
 
-#define RPC_MSG_BUF_NUM 8
+#define RPC_RDMA_MSG_BUF_NUM 8
+#define RPC_SHMEM_MSG_BUF_NUM 16384
 
 enum rpc_channel_type {
 	RPC_CH_RDMA = 1,

@@ -55,7 +55,7 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 	switch (ch_type) {
 	case RPC_CH_RDMA:
 		rdma_attr.server = is_server;
-		rdma_attr.msgbuf_cnt = RPC_MSG_BUF_NUM;
+		rdma_attr.msgbuf_cnt = RPC_RDMA_MSG_BUF_NUM;
 		rdma_attr.msgdata_size = max_msgdata_size;
 		rdma_attr.port = port;
 		rdma_attr.rpc_msg_handler_cb = server_rpc_msg_handler;
@@ -71,7 +71,7 @@ int init_rpc_server(enum rpc_channel_type ch_type, char *target, int port,
 
 	case RPC_CH_SHMEM:
 		shmem_attr.server = is_server;
-		shmem_attr.msgbuf_cnt = RPC_MSG_BUF_NUM;
+		shmem_attr.msgbuf_cnt = RPC_SHMEM_MSG_BUF_NUM;
 		shmem_attr.msgdata_size = max_msgdata_size;
 		shmem_attr.rpc_msg_handler_cb = server_rpc_msg_handler;
 		shmem_attr.user_msg_handler_cb = msg_handler;

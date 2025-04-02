@@ -108,20 +108,16 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 
 	rpc_ch = calloc(1, sizeof *rpc_ch);
 	rpc_ch->ch_type = ch_type;
-	rpc_ch->msgbuf_bitmap = bit_array_create(RPC_MSG_BUF_NUM);
 	pthread_spin_init(&rpc_ch->msgbuf_bitmap_lock, PTHREAD_PROCESS_PRIVATE);
-
-	// Print for test.
-	printf("Message buffer bitmaps: ");
-	bit_array_print(rpc_ch->msgbuf_bitmap, stdout);
-	fputc('\n', stdout);
 
 	is_server = 0;
 
 	switch (ch_type) {
 	case RPC_CH_RDMA:
+		rpc_ch->msgbuf_bitmap = bit_array_create(RPC_RDMA_MSG_BUF_NUM);
+
 		rdma_attr.server = is_server;
-		rdma_attr.msgbuf_cnt = RPC_MSG_BUF_NUM;
+		rdma_attr.msgbuf_cnt = RPC_RDMA_MSG_BUF_NUM;
 		rdma_attr.msgdata_size = max_msgdata_size;
 		strcpy(rdma_attr.ip_addr, target);
 		rdma_attr.port = port;
@@ -133,9 +129,11 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 		break;
 
 	case RPC_CH_SHMEM:
+		rpc_ch->msgbuf_bitmap = bit_array_create(RPC_SHMEM_MSG_BUF_NUM);
+
 		shmem_attr.shm_key_seed = shm_key_seed;
 		shmem_attr.server = is_server;
-		shmem_attr.msgbuf_cnt = RPC_MSG_BUF_NUM;
+		shmem_attr.msgbuf_cnt = RPC_SHMEM_MSG_BUF_NUM;
 		shmem_attr.msgdata_size = max_msgdata_size;
 		shmem_attr.rpc_msg_handler_cb = NULL;
 		shmem_attr.user_msg_handler_cb = msg_handler;
@@ -155,6 +153,11 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 	if (!rpc_ch->ch_cb) {
 		goto err;
 	}
+
+	// Print for test.
+	// printf("Message buffer bitmaps: ");
+	// bit_array_print(rpc_ch->msgbuf_bitmap, stdout);
+	// fputc('\n', stdout);
 
 	return rpc_ch;
 
