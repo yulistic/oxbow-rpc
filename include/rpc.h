@@ -101,6 +101,8 @@ uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch);
 void free_msgbuf_id(struct rpc_ch_info *rpc_ch, uint64_t bit_id);
 void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			     int callback);
+int trywait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
+			       int callback);
 int get_max_msgdata_size(struct rpc_ch_info *rpc_ch);
 
 // Busy wait for a given time before sem_wait (sleep).
@@ -155,5 +157,16 @@ static inline void rpc_sem_wait(sem_t *sem)
 #else
 #error "Invalid SEMA_MODE value. Must be 0, 1, or 2."
 #endif
+
+/**
+ * @brief Non-blocking. Only test and return immediately.
+ * 
+ * @param sem 
+ * @return int
+ */
+static inline int rpc_sem_trywait(sem_t *sem)
+{
+	return sem_trywait(sem);
+}
 
 #endif

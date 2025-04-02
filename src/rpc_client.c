@@ -45,13 +45,14 @@ static void client_rpc_shmem_msg_handler(struct rpc_ch_info *client_rpc_ch,
  * @param msgbuf_id 
  * @param callback  If true, call user callback function.
  */
-void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
-			     int callback)
+static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
+				      int callback, int is_blocking)
 {
 	sem_t *sem;
 	struct shmem_ch_cb *cb;
 	struct shmem_msg *shmem_msg;
 	struct rpc_msg *rpc_msg;
+	int ret;
 
 	assert(rpc_ch->ch_type == RPC_CH_SHMEM);
 
@@ -59,10 +60,17 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 	sem = &cb->buf_ctxs[msgbuf_id].evt->client_sem;
 	shmem_msg = cb->buf_ctxs[msgbuf_id].resp_buf;
 
-	// Wait for server's post.
-	log_debug("Waiting for the server's response. Sem-addr=0x%lx", sem);
-	rpc_sem_wait(sem);
-	log_debug("Resume.");
+	if (!is_blocking) {
+		ret = rpc_sem_trywait(sem);
+		if (ret < 0)
+			return ret;
+	} else {
+		// Wait for server's post.
+		log_debug("Waiting for the server's response. Sem-addr=0x%lx",
+			  sem);
+		rpc_sem_wait(sem);
+		log_debug("Resume.");
+	}
 
 	// Execute callback functions
 
@@ -82,6 +90,34 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 		cb->user_msg_handler_cb((void *)rpc_msg);
 
 	free(rpc_msg);
+
+	return 0;
+}
+
+/**
+ * @brief 
+ * 
+ * @param rpc_ch 
+ * @param msgbuf_id 
+ * @param callback  If true, call user callback function.
+ */
+void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
+			     int callback)
+{
+	do_wait_rpc_shmem_response(rpc_ch, msgbuf_id, callback, 1);
+}
+
+/**
+ * @brief Non-blocking.
+ * 
+ * @param rpc_ch 
+ * @param msgbuf_id 
+ * @param callback  If true, call user callback function.
+ */
+int trywait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
+			       int callback)
+{
+	return do_wait_rpc_shmem_response(rpc_ch, msgbuf_id, callback, 0);
 }
 
 /**
