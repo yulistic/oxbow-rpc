@@ -7,7 +7,10 @@
 #include "global.h"
 #include "thpool.h"
 
-#define RPC_RDMA_MSG_BUF_NUM 8
+// It is bound to RDMA_SQ_DEPTH and RDMA_RQ_DEPTH defined in rdma.c.
+// Currently, it is 192 which is the same as Data fetcher buffer number in Oxbow.
+#define RPC_RDMA_MSG_BUF_NUM 192
+
 #define RPC_SHMEM_MSG_BUF_NUM 16384
 
 enum rpc_channel_type {

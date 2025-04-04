@@ -20,8 +20,10 @@
 // #define ENABLE_PRINT 1
 #include "log.h"
 
-#define RDMA_SQ_DEPTH 16
-#define RDMA_RQ_DEPTH 16
+// It affects the number of msg buffers (RPC_RDMA_MSG_BUF_NUM defined in rpc.h).
+// Currently, it is 192 which is the same as Data fetcher buffer number in Oxbow.
+#define RDMA_SQ_DEPTH 192
+#define RDMA_RQ_DEPTH 192
 
 // TODO: to be deleted.
 #define RPING_MSG_FMT "rdma-ping-%d: "
