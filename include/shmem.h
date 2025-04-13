@@ -21,7 +21,7 @@ struct shmem_evt_flag {
 	// uint64_t client_evt;
 	sem_t client_sem;
 	char pad[32]; // Make server_evt aligned in a 64-bit cache line.
-	uint64_t server_evt;
+	atomic_ulong server_evt;
 };
 
 // It is stored in the shmem seg.

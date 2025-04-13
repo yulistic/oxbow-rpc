@@ -89,7 +89,7 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	memcpy(&msg->data[0], data, cb->msgdata_size);
 
 	// Notify server which msgbuf has a new message.
-	mb_ctx->evt->server_evt = 1;
+	atomic_store(&mb_ctx->evt->server_evt, 1);
 
 	// log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=%lx data=\"%s\"",
 	// 	 seqn, (uint64_t)rpc_ch, msg->data);
@@ -606,13 +606,13 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 	// Check msgbuf flags to find out whether a message arrived.
 	for (i = 0; i < cb->msgbuf_cnt; i++) {
 		mb_ctx = &client->buf_ctxs[i];
-		if (mb_ctx->evt->server_evt) { // msg arrived.
+		if (atomic_load(&mb_ctx->evt->server_evt)) { // msg arrived.
 			log_debug(
 				"[msgbuf] Client %d has a message in msgbuf %d",
 				client_id, i);
 			handle_client_msg(cb, client, i);
 			// clear flag.
-			mb_ctx->evt->server_evt = 0;
+			atomic_store(&mb_ctx->evt->server_evt, 0);
 			handled++;
 		}
 	}
