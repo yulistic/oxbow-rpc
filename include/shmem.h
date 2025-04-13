@@ -57,6 +57,7 @@ struct shmem_client_state {
 	int shmem_id;
 	char *shmem_addr;
 	struct shmem_msgbuf_ctx *buf_ctxs; // msgbuf contexts.
+	uint32_t last_scanned_idx; // To memorize the last scanned index.
 };
 
 // Per-server

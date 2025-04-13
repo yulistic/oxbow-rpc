@@ -607,7 +607,9 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 	handled = 0;
 
 	// Check msgbuf flags to find out whether a message arrived.
-	for (i = 0; i < cb->msgbuf_cnt; i++) {
+	// Scan from the last scanned index.
+	for (i = client->last_scanned_idx + 1; i < cb->msgbuf_cnt; i++) {
+	again:
 		mb_ctx = &client->buf_ctxs[i];
 		if (atomic_load(&mb_ctx->evt->server_evt)) { // msg arrived.
 			log_debug(
@@ -616,19 +618,44 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 			handle_client_msg(cb, client, i);
 			// clear flag.
 			atomic_store(&mb_ctx->evt->server_evt, 0);
+
+			// Handle only one msg.
 			handled++;
+			break;
+		}
+
+		if (i == cb->msgbuf_cnt - 1) {
+			// Not found. Start from the beginning.
+			i = 0;
+			goto again;
 		}
 	}
+
+	// Store the last scanned index for the next scan.
+	client->last_scanned_idx = i;
+
+	assert(handled == 1);
 
 	return handled;
 }
 
+// OPTIMIZE: How to handle bursty events?
+// Becareful race condition (in the previous implementation):
+// 1. Client set evt flag. Before this client post server's sema 2 and 3 happens.
+// 2. While server is handling a previous event, it finds a new event flag is
+//    set.
+// 3. Server handles the new event together and client sema is posted.
+// 4. The client (client in 1.) posts server's sema.
+// 5. The server has no evt to handle. Response is not delivered to client.
+// 6. The client waits for the response. (deadlock).
 static void *handle_event(void *arg)
 {
 	struct shmem_ch_cb *cb;
 	struct shmem_server_state *server;
-	bit_index_t cur, next;
-	int handled, handled_total;
+	bit_index_t cur, next, last_scanned_client_idx = 0;
+	int handled;
+	int ret;
+	int wrap_around;
 
 	cb = (struct shmem_ch_cb *)arg;
 	server = cb->server_state;
@@ -643,26 +670,37 @@ static void *handle_event(void *arg)
 		rpc_sem_wait(server->cq_sem);
 
 		// Lookup client bitmap.
-		cur = 0;
+		cur = last_scanned_client_idx + 1;
 		next = 0;
-		handled_total = 0;
+		wrap_around = 0;
 
 		// Read only. No locking required.
-		while (bit_array_find_next_set_bit(server->client_bitmap, cur,
-						   &next)) {
-			log_debug("[Event handler] Client %d is registered.",
-				  next);
+		while (1) {
+			ret = bit_array_find_next_set_bit(server->client_bitmap,
+							  cur, &next);
+			if (ret == 0 && wrap_around) {
+				// We searched all bitmaps but no client found.
+				last_scanned_client_idx = 0;
+				break;
+
+			} else if (ret == 0) {
+				// !wrap_around --> search from the beginning.
+				wrap_around = 1;
+				cur = 0;
+				continue;
+			}
+
+			// Next search will start from the next client.
+			last_scanned_client_idx = next;
 
 			// Handle incoming message.
 			handled = handle_arrived_msgs(cb, next);
-			handled_total += handled;
-			cur = next + 1;
-			log_debug(
-				"[Event handler] Handled %d events of Client %d.",
-				handled, next);
+
+			if (handled)
+				break;
 		}
-		log_debug("[Event handler] Total %d events handled.",
-			  handled_total);
+		log_debug("[Event handler] Handled %d events of Client %d.",
+			  handled, next);
 	}
 
 	if (cb->on_disconnect)
