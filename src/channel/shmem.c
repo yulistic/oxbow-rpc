@@ -293,8 +293,11 @@ void set_shmem_msgbuf_ctx(struct shmem_msgbuf_ctx *mb_ctx, char *shm_addr,
 		mb_ctx[i].resp_buf = (struct shmem_msg *)cb_p;
 		cb_p += msgbuf_size;
 
-		if (init_sem)
+		if (init_sem) {
 			sem_init(&ef->client_sem, 1, 0);
+			atomic_init(&ef->server_evt, 0);
+		}
+
 		mb_ctx[i].evt = ef;
 		ef++; // advance sizeof(struct shmem_evt_flag) bytes.
 	}
