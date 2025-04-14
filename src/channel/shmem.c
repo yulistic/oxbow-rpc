@@ -610,9 +610,9 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 			// log_warn(
 			// 	"[msgbuf] Client %d has a message in msgbuf %d",
 			// 	client_id, i);
+			atomic_store(&mb_ctx->evt->server_evt, 0);
 			handle_client_msg(cb, client, i);
 			// clear flag.
-			atomic_store(&mb_ctx->evt->server_evt, 0);
 			handled++;
 		}
 	}
