@@ -629,12 +629,15 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 			i = 0;
 			goto again;
 		}
+
+		if (i == (int)client->last_scanned_idx) {
+			// No event found.
+			break;
+		}
 	}
 
 	// Store the last scanned index for the next scan.
 	client->last_scanned_idx = i;
-
-	assert(handled == 1);
 
 	return handled;
 }
