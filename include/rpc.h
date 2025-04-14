@@ -6,12 +6,14 @@
 #include <pthread.h>
 #include "global.h"
 #include "thpool.h"
-
+#include <stdatomic.h>
 // It is bound to RDMA_SQ_DEPTH and RDMA_RQ_DEPTH defined in rdma.c.
 // Currently, it is 192 which is the same as Data fetcher buffer number in Oxbow.
 #define RPC_RDMA_MSG_BUF_NUM 192
 
-#define RPC_SHMEM_MSG_BUF_NUM 16384
+// #define RPC_SHMEM_MSG_BUF_NUM 16384
+#define RPC_SHMEM_MSG_BUF_NUM 4096
+extern atomic_int g_rpc_shmem_msgbuf_id; // For shmem channel.
 
 enum rpc_channel_type {
 	RPC_CH_RDMA = 1,

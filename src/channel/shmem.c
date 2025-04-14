@@ -76,7 +76,7 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	}
 
 	mb_ctx = &cb->buf_ctxs[msgbuf_id];
-
+	// log_warn("Sending msgbuf_id=%d", msgbuf_id);
 	seqn = alloc_seqn(mb_ctx);
 
 	msg = mb_ctx->req_buf;
@@ -607,9 +607,9 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 	for (i = 0; i < cb->msgbuf_cnt; i++) {
 		mb_ctx = &client->buf_ctxs[i];
 		if (atomic_load(&mb_ctx->evt->server_evt)) { // msg arrived.
-			log_debug(
-				"[msgbuf] Client %d has a message in msgbuf %d",
-				client_id, i);
+			// log_warn(
+			// 	"[msgbuf] Client %d has a message in msgbuf %d",
+			// 	client_id, i);
 			handle_client_msg(cb, client, i);
 			// clear flag.
 			atomic_store(&mb_ctx->evt->server_evt, 0);
@@ -637,16 +637,20 @@ static void *handle_event(void *arg)
 		pthread_testcancel();
 
 		// Producer will post sem.
+		// log_warn("[%s] Waiting for event... wait total: %d", __func__,
+		// 	 handled_total);
 		while (handled_total != 0) {
 			rpc_sem_wait(server->cq_sem);
 			handled_total--;
 		}
+		// log_warn("[%s] We got events", __func__);
 
 		// Lookup client bitmap.
 		cur = 0;
 		next = 0;
 		handled_total = 0;
 
+	again:
 		// Read only. No locking required.
 		while (bit_array_find_next_set_bit(server->client_bitmap, cur,
 						   &next)) {
@@ -661,8 +665,10 @@ static void *handle_event(void *arg)
 				"[Event handler] Handled %d events of Client %d.",
 				handled, next);
 		}
-		log_debug("[Event handler] Total %d events handled.",
-			  handled_total);
+		if (handled_total == 0)
+			goto again;
+		// log_warn("[Event handler] Handled %d events of Client %d.",
+		// 	 handled, next);
 	}
 
 	if (cb->on_disconnect)

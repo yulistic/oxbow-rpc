@@ -66,10 +66,10 @@ static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			return ret;
 	} else {
 		// Wait for server's post.
-		log_debug("Waiting for the server's response. Sem-addr=0x%lx",
-			  sem);
+		// log_warn("Waiting for the server's response. Sem-addr=0x%lx",
+		// 	 sem);
 		rpc_sem_wait(sem);
-		log_debug("Resume.");
+		// log_warn("Resume.");
 	}
 
 	// Execute callback functions
