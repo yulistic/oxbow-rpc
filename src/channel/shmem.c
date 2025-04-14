@@ -625,7 +625,7 @@ static void *handle_event(void *arg)
 	struct shmem_ch_cb *cb;
 	struct shmem_server_state *server;
 	bit_index_t cur, next;
-	int handled, handled_total;
+	int handled, handled_total = 1;
 
 	cb = (struct shmem_ch_cb *)arg;
 	server = cb->server_state;
@@ -637,7 +637,10 @@ static void *handle_event(void *arg)
 		pthread_testcancel();
 
 		// Producer will post sem.
-		rpc_sem_wait(server->cq_sem);
+		while (handled_total != 0) {
+			rpc_sem_wait(server->cq_sem);
+			handled_total--;
+		}
 
 		// Lookup client bitmap.
 		cur = 0;

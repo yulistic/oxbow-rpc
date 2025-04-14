@@ -6,6 +6,6 @@
 #define ENABLE_PRINT 0
 #endif
 
-#define SEMA_MODE 0 // 0: always sleep, 1: hybrid polling, 2: always busywait.
+#define SEMA_MODE 1 // 0: always sleep, 1: hybrid polling, 2: always busywait.
 
 #endif
