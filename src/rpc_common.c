@@ -36,7 +36,7 @@ uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch)
 			break;
 		else {
 			log_warn("Failed to alloc a msgbuf id. (sleep 1 sec)");
-			sleep(1);
+			// sleep(1);
 		}
 	}
 

@@ -85,6 +85,7 @@ static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 	// Free msgbuf.
 	client_rpc_shmem_msg_handler(rpc_ch, msgbuf_id);
 
+	// some operation not require msg from server.
 	// User defined callback function.
 	if (callback)
 		cb->user_msg_handler_cb((void *)rpc_msg);

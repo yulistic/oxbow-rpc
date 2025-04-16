@@ -10,6 +10,7 @@
 #include "shmem.h"
 #include "shmem_cm.h"
 #include "rpc.h"
+#include "profile.h"
 
 // Per file debug print setup.
 // #define ENABLE_PRINT 1
@@ -639,6 +640,7 @@ static void *handle_event(void *arg)
 		// Producer will post sem.
 		// log_warn("[%s] Waiting for event... wait total: %d", __func__,
 		// 	 handled_total);
+		TIMER_START("HandleEvent");
 		while (handled_total != 0) {
 			rpc_sem_wait(server->cq_sem);
 			handled_total--;
@@ -652,21 +654,26 @@ static void *handle_event(void *arg)
 
 	again:
 		// Read only. No locking required.
+		TIMER_START("__BITMAP_FIND");
 		while (bit_array_find_next_set_bit(server->client_bitmap, cur,
 						   &next)) {
 			log_debug("[Event handler] Client %d is registered.",
 				  next);
 
+			TIMER_START("____HANDLE_MSGS");
 			// Handle incoming message.
 			handled = handle_arrived_msgs(cb, next);
+			TIMER_END("____HANDLE_MSGS");
 			handled_total += handled;
 			cur = next + 1;
 			log_debug(
 				"[Event handler] Handled %d events of Client %d.",
 				handled, next);
 		}
+		TIMER_END("__BITMAP_FIND");
 		if (handled_total == 0)
 			goto again;
+		TIMER_END("HandleEvent");
 		// log_warn("[Event handler] Handled %d events of Client %d.",
 		// 	 handled, next);
 	}

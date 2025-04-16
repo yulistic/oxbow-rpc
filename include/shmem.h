@@ -8,7 +8,7 @@
 #include "thpool.h"
 #include "bit_array.h"
 
-#define MAX_CLIENT_CONNECTION 128
+#define MAX_CLIENT_CONNECTION 16
 
 // An arbitrary id that does not overlap with clients'.
 #define SHMEM_CQ_CB_ID (MAX_CLIENT_CONNECTION + 1)

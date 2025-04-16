@@ -12,9 +12,9 @@
 #define RPC_RDMA_MSG_BUF_NUM 192
 
 // #define RPC_SHMEM_MSG_BUF_NUM 16384
-#define RPC_SHMEM_MSG_BUF_NUM 32786
-extern atomic_int g_rpc_shmem_msgbuf_id; // For shmem channel.
-extern atomic_long g_rpc_shmem_msgbuf_count;
+#define RPC_SHMEM_MSG_BUF_NUM 512
+// extern atomic_int g_rpc_shmem_msgbuf_id; // For shmem channel.
+// extern atomic_long g_rpc_shmem_msgbuf_count;
 
 enum rpc_channel_type {
 	RPC_CH_RDMA = 1,
