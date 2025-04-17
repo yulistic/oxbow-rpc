@@ -11,7 +11,7 @@
 // Currently, it is 192 which is the same as Data fetcher buffer number in Oxbow.
 #define RPC_RDMA_MSG_BUF_NUM 192
 
-#define RPC_SHMEM_MSG_BUF_NUM 16384
+#define RPC_SHMEM_MSG_BUF_NUM 512
 
 enum rpc_channel_type {
 	RPC_CH_RDMA = 1,
