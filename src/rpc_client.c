@@ -121,6 +121,11 @@ int trywait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 	return do_wait_rpc_shmem_response(rpc_ch, msgbuf_id, callback, 0);
 }
 
+void nowait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id)
+{
+	client_rpc_shmem_msg_handler(rpc_ch, msgbuf_id);
+}
+
 /**
  * @brief Initialize RPC client.
  * 

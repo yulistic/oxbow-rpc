@@ -109,6 +109,7 @@ void wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			     int callback);
 int trywait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			       int callback);
+void nowait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id);
 int get_max_msgdata_size(struct rpc_ch_info *rpc_ch);
 
 // Busy wait for a given time before sem_wait (sleep).
