@@ -874,7 +874,7 @@ struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 			calloc(cb->msgbuf_cnt, sizeof(struct shmem_msgbuf_ctx));
 		if (!cb->buf_ctxs) {
 			ret = -ENOMEM;
-			log_error("calloc failed.");
+			log_error("calloc failed. errno=%d", errno);
 			goto err1;
 		}
 
