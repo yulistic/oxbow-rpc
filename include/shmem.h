@@ -111,6 +111,7 @@ struct shmem_ch_cb {
 
 	// for client use.
 	// int cb_id; // Client's cb_id;
+	int client_cm_fd; // Client's connection management socket fd.
 	key_t shm_key;
 	uint64_t shm_size;
 	int shmem_id;

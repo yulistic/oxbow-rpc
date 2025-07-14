@@ -10,6 +10,7 @@
 #include "shmem.h"
 #include "shmem_cm.h"
 #include "rpc.h"
+#include "profiling.h"
 
 // Per file debug print setup.
 // #define ENABLE_PRINT 1
@@ -478,6 +479,11 @@ void register_client(struct shmem_ch_cb *cb, int client_fd, key_t *shm_key,
 	// Set client bitmap.
 	bit_array_set_bit(server->client_bitmap, cb_id);
 
+#if ENABLE_PROFILING
+	// Update active client count
+	atomic_fetch_add(&g_server_prof.active_clients, 1);
+#endif
+
 	log_info("Client registered. client-id=%d shmem-id=%d shmem-addr=0x%lx",
 		 cb_id, client->shmem_id, (uint64_t)client->shmem_addr);
 
@@ -508,6 +514,14 @@ void deregister_client_with_sockfd(struct shmem_ch_cb *server_cb,
 	}
 
 	bit_array_clear_bit(server->client_bitmap, cb_id);
+
+	// Update active client count
+#if ENABLE_PROFILING
+	if (atomic_load(&g_server_prof.active_clients) > 0) {
+		atomic_fetch_sub(&g_server_prof.active_clients, 1);
+	}
+#endif
+
 	free(server->clients[cb_id]);
 	server->clients[cb_id] = NULL;
 }
@@ -522,6 +536,14 @@ void deregister_client_with_key(struct shmem_ch_cb *server_cb, key_t client_key)
 	cb_id = get_cb_id_with_key(client_key, server_cb->shm_key_seed);
 
 	bit_array_clear_bit(server->client_bitmap, cb_id);
+
+#if ENABLE_PROFILING
+	// Update active client count
+	if (atomic_load(&g_server_prof.active_clients) > 0) {
+		atomic_fetch_sub(&g_server_prof.active_clients, 1);
+	}
+#endif
+
 	free(server->clients[cb_id]);
 	server->clients[cb_id] = NULL;
 }
@@ -536,7 +558,13 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 	struct shmem_msgbuf_ctx *mb_ctx;
 	int ret;
 
+	// Profile total message processing time
+	PROF_START(total_start);
+
 	mb_ctx = &client->buf_ctxs[msgbuf_id];
+
+	// Profile memory allocation time
+	PROF_START(alloc_start);
 
 	// These are freed in the handler callback function.
 	rpc_param = calloc(1, sizeof *rpc_param);
@@ -555,13 +583,20 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 		goto err3;
 	}
 
+	PROF_END_UPDATE(alloc_start, &g_server_prof.msg_alloc);
+
 	msg->header.seqn = mb_ctx->req_buf->seq_num;
 	msg->header.client_rpc_ch = mb_ctx->req_buf->rpc_ch;
+
+	// Profile message copy time
+	PROF_START(copy_start);
 
 	// Copy and send fixed size, currently.
 	// OPTIMIZE: Can we copy only the meaningful data? memset will be required.
 	// memset(...);
 	memcpy(&msg->data[0], &mb_ctx->req_buf->data[0], cb->msgdata_size);
+
+	PROF_END_UPDATE(copy_start, &g_server_prof.msg_copy);
 
 	param->client_id = client->cb_id;
 	param->msgbuf_id = msgbuf_id;
@@ -577,10 +612,23 @@ static int handle_client_msg(struct shmem_ch_cb *cb,
 		  msgbuf_id, msg->header.seqn, msg->data,
 		  (uint64_t)rpc_param->client_rpc_ch);
 
+	// Profile thread pool dispatch time
+	PROF_START(dispatch_start);
+
 	// Execute RPC callback function in a worker thread.
 	if (cb->rpc_msg_handler_cb)
 		thpool_add_work(cb->msg_handler_thpool, cb->rpc_msg_handler_cb,
 				(void *)rpc_param);
+
+	PROF_END_UPDATE(dispatch_start, &g_server_prof.msg_handler_dispatch);
+
+	// Update total processing time and message count
+	PROF_END_UPDATE(total_start, &g_server_prof.total_msg_processing);
+
+#if ENABLE_PROFILING
+	atomic_fetch_add(&g_server_prof.total_messages_processed, 1);
+#endif
+
 	return 0;
 err3:
 	free(param);
@@ -603,6 +651,9 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 
 	handled = 0;
 
+	// Profile message buffer scanning
+	PROF_START(scan_start);
+
 	// Check msgbuf flags to find out whether a message arrived.
 	for (i = 0; i < cb->msgbuf_cnt; i++) {
 		mb_ctx = &client->buf_ctxs[i];
@@ -616,6 +667,8 @@ static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
 			handled++;
 		}
 	}
+
+	PROF_END_UPDATE(scan_start, &g_server_prof.msgbuf_scan);
 
 	return handled;
 }
@@ -723,6 +776,9 @@ static void init_shmem_server(struct shmem_ch_cb *cb)
 		atomic_init(&g_server_id, 1); // Start from 1.
 		atomic_init(&g_server_cnt, 0);
 		initialized = 1;
+
+		// Initialize profiling
+		init_profiling();
 	}
 
 	server = calloc(1, sizeof(struct shmem_server_state));
@@ -870,6 +926,9 @@ struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 	if (cb->server) {
 		init_shmem_server(cb); // init cb->server_state
 	} else {
+		// Initialize client-specific fields
+		cb->client_cm_fd = -1;
+
 		cb->buf_ctxs =
 			calloc(cb->msgbuf_cnt, sizeof(struct shmem_msgbuf_ctx));
 		if (!cb->buf_ctxs) {
@@ -908,9 +967,50 @@ err:
 
 void destroy_shmem_client(struct shmem_ch_cb *cb)
 {
-	// TODO: Instead of this function, we require a function that detaches
-	// shm and used by a client.
+	struct shmem_cm_request req;
+	int ret;
 
-	// remove_shm_seg(cb->shmem_id);
-	// TODO: Destroy client channel.
+	if (cb->server) {
+		log_warn("destroy_shmem_client() is for client only.");
+		return;
+	}
+
+	// Send DEREGISTER message to server if CM connection is valid
+	if (cb->client_cm_fd >= 0) {
+		req.op = DEREGISTER;
+		req.client_key = cb->shm_key;
+
+		ret = write(cb->client_cm_fd, &req,
+			    sizeof(struct shmem_cm_request));
+		if (ret == -1) {
+			log_warn("Failed to send DEREGISTER message to server");
+		} else {
+			log_debug("Sent DEREGISTER message to server");
+		}
+
+		// Close the connection management socket
+		close(cb->client_cm_fd);
+		log_debug("Closed client CM socket fd=%d", cb->client_cm_fd);
+		cb->client_cm_fd = -1;
+	}
+
+	// Detach shared memory segments
+	if (cb->shmem_addr) {
+		detach_shm_seg(cb->shmem_addr);
+		log_debug("Detached shmem_addr=0x%lx", cb->shmem_addr);
+	}
+
+	if (cb->cq_shmem_addr) {
+		detach_shm_seg(cb->cq_shmem_addr);
+		log_debug("Detached cq_shmem_addr=0x%lx", cb->cq_shmem_addr);
+	}
+
+	// Free message buffer contexts
+	if (cb->buf_ctxs) {
+		free(cb->buf_ctxs);
+		cb->buf_ctxs = NULL;
+		log_debug("Freed buf_ctxs");
+	}
+
+	// Note: The cb structure itself is freed by the RPC layer (destroy_rpc_client)
 }

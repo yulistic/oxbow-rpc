@@ -98,7 +98,8 @@ int connect_to_shmem_server(void *arg, key_t *shm_key, uint64_t *shm_size,
 		 (uint64_t)*shm_key, *shm_size, (uint64_t)*cq_shm_key);
 
 	// We maintain the connection for server to detect client's disconnection.
-	// close(client_fd);
+	// Store the client fd for later use in destroy_shmem_client()
+	cb->client_cm_fd = client_fd;
 
 	free(buf_out);
 	free(buf_in);
@@ -289,7 +290,8 @@ void *shmem_cm_thread(void *arg)
 
 	set_nonblocking(server_fd);
 
-	ret = listen(server_fd, 5);
+	ret = listen(server_fd,
+		     128); // Increased from 5 to 128 for scalability tests
 	if (ret == -1) {
 		log_error("shmem cm error on listen()");
 		ret = -1;

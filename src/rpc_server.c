@@ -4,6 +4,7 @@
 #include "rpc.h"
 #include "rdma.h"
 #include "shmem.h"
+#include "profiling.h"
 
 // Overwrite global print config.
 // #define ENABLE_PRINT 1

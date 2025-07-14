@@ -7,6 +7,7 @@
 #include "shmem.h"
 #include "shmem_cm.h"
 #include "bit_array.h"
+#include "profiling.h"
 
 // Overwrite global print config.
 // #define ENABLE_PRINT 1
@@ -60,6 +61,9 @@ static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 	sem = &cb->buf_ctxs[msgbuf_id].evt->client_sem;
 	shmem_msg = cb->buf_ctxs[msgbuf_id].resp_buf;
 
+	// Profile response wait time
+	PROF_START(wait_start);
+
 	if (!is_blocking) {
 		ret = rpc_sem_trywait(sem);
 		if (ret < 0)
@@ -71,6 +75,8 @@ static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 		rpc_sem_wait(sem);
 		log_debug("Resume.");
 	}
+
+	PROF_END_UPDATE(wait_start, &g_client_prof.response_wait);
 
 	// Execute callback functions
 
@@ -88,6 +94,11 @@ static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 	// User defined callback function.
 	if (callback)
 		cb->user_msg_handler_cb((void *)rpc_msg);
+
+#if ENABLE_PROFILING
+	// Update response count
+	atomic_fetch_add(&g_client_prof.total_responses_received, 1);
+#endif
 
 	free(rpc_msg);
 
@@ -141,6 +152,9 @@ struct rpc_ch_info *init_rpc_client(enum rpc_channel_type ch_type, char *target,
 	struct shmem_ch_attr shmem_attr;
 	struct rpc_ch_info *rpc_ch;
 	int is_server;
+
+	// Initialize profiling for client
+	init_profiling();
 
 	rpc_ch = calloc(1, sizeof *rpc_ch);
 	rpc_ch->ch_type = ch_type;
@@ -233,10 +247,21 @@ int send_rpc_msg_to_server(struct rpc_req_param *req_param)
 	int msgbuf_id;
 	struct rpc_ch_info *rpc_ch;
 
+	// Profile total RPC time
+	PROF_START(total_rpc_start);
+
 	rpc_ch = req_param->rpc_ch;
+
+	// Profile message buffer allocation time
+	PROF_START(alloc_start);
 
 	// Alloc a message buffer id.
 	msgbuf_id = alloc_msgbuf_id(rpc_ch);
+
+	PROF_END_UPDATE(alloc_start, &g_client_prof.msgbuf_alloc);
+
+	// Profile message send time
+	PROF_START(send_start);
 
 	switch (rpc_ch->ch_type) {
 	case RPC_CH_RDMA:
@@ -252,6 +277,17 @@ int send_rpc_msg_to_server(struct rpc_req_param *req_param)
 	default:
 		log_error("Invalid channel type for RPC.");
 	}
+
+	PROF_END_UPDATE(send_start, &g_client_prof.msg_send);
+
+#if ENABLE_PROFILING
+	// Update request count
+	atomic_fetch_add(&g_client_prof.total_requests_sent, 1);
+#endif
+
+	// Note: total_rpc_time should be updated when response is received
+	// For now, we'll update it here for basic profiling
+	PROF_END_UPDATE(total_rpc_start, &g_client_prof.total_rpc_time);
 
 	return msgbuf_id;
 }

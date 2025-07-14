@@ -53,6 +53,7 @@ oxbow_rpc_lib_srcs = [ \
 'src/channel/rdma.c',
 'src/channel/shmem.c',
 'src/channel/shmem_cm.c',
+'src/profiling.c',
 ]
 
 oxbow_rpc_lib = shared_library('oxbow_rpc',
