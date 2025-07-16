@@ -232,7 +232,7 @@ void run_scalability_test(int num_clients)
 			rpc_clients[i] = init_rpc_client(
 				RPC_CH_SHMEM, g_shmem_path, 0,
 				MAX_MSG_DATA_SIZE, client_shmem_msg_handler,
-				handler_thpools[i], SHM_KEY_SEED + i);
+				handler_thpools[i], SHM_KEY_SEED);
 			break;
 
 		default:
@@ -264,6 +264,9 @@ void run_scalability_test(int num_clients)
 		// Give server time to process reset
 		usleep(100000); // 100ms
 		log_info("Sent reset stats request to server using client 0");
+
+		// To free msgbuf.
+		wait_rpc_shmem_response(rpc_clients[0], 0, 0);
 	}
 
 	// Reset statistics
@@ -428,7 +431,7 @@ int main(int argc, char **argv)
 		run_scalability_test(num_clients);
 
 		// Sleep between tests to let server recover and clean up clients
-		sleep(5);
+		sleep(3);
 	}
 
 	log_info("All scalability tests completed");

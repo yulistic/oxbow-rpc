@@ -43,14 +43,21 @@ static int initialized = 0;
 static atomic_uint g_server_cnt; // The number of server created.
 static atomic_int g_server_id;
 
+/**
+ * @brief Calculate the total size of notification queue in shared memory
+ * This includes both the queue structure and the notifications array
+ * 
+ * @return size_t Total notification queue size in bytes
+ */
+static inline size_t get_notification_queue_size(void)
+{
+	return sizeof(struct msg_notification_queue) +
+	       MSG_NOTIFICATION_QUEUE_SIZE * sizeof(struct msg_notification);
+}
+
 static inline uint64_t alloc_seqn(struct shmem_msgbuf_ctx *msgbuf)
 {
 	return msgbuf->seqn++;
-}
-
-static inline void set_evt_arrival_flag(sem_t *sem)
-{
-	sem_post(sem);
 }
 
 /**
@@ -89,8 +96,16 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	// memset(&msg->data[0], 0, cb->msgdata_size);
 	memcpy(&msg->data[0], data, cb->msgdata_size);
 
-	// Notify server which msgbuf has a new message.
-	atomic_store(&mb_ctx->evt->server_evt, 1);
+	// Event-Driven Direct Notification: Add to server's notification queue
+	// This eliminates the need for O(n²) scanning on the server side
+	rpc_assert(cb->server_notif_queue);
+	int ret = msg_notification_queue_push(cb->server_notif_queue,
+					      cb->client_id, msgbuf_id);
+	if (ret != 0) {
+		log_warn(
+			"Failed to add notification to queue for client %d buffer %d",
+			cb->client_id, msgbuf_id);
+	}
 
 	// log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=%lx data=\"%s\"",
 	// 	 seqn, (uint64_t)rpc_ch, msg->data);
@@ -232,26 +247,36 @@ int attach_client_shmem(struct shmem_ch_cb *cb)
 
 	log_debug("Attached shmem_addr=0x%lx", shmaddr);
 
-	// Get and attach shmem for server's event semaphore (cq).
-	shmid = get_shm_seg(cb->cq_shm_key,
-			    sizeof(sem_t)); // Rounded up to PAGESIZE.
+	// Get and attach shmem for server's event semaphore (cq) and notification queue.
+	// Calculate size for semaphore + notification queue in shared memory
+	size_t cq_shm_size = sizeof(sem_t) + get_notification_queue_size();
+
+	shmid = get_shm_seg(cb->cq_shm_key, cq_shm_size);
 
 	if (shmid == -1) {
-		log_error("Getting client's shmem(shmget) failed.");
+		log_error("Getting client's CQ shmem(shmget) failed.");
 		goto err3;
 	}
 	cb->cq_shmem_id = shmid;
 
 	shmaddr = attach_shm_seg(shmid);
 	if (!shmaddr) {
-		log_error("Attaching client's shmem(shmat) failed.");
+		log_error("Attaching client's CQ shmem(shmat) failed.");
 		goto err4;
 	}
 	cb->cq_shmem_addr = shmaddr;
 	log_debug("Attached cq_shmem_addr=0x%lx", shmaddr);
 
-	cb->server_cq_sem =
-		(sem_t *)shmaddr; // sem is stored at the beginning of the shmem
+	// Setup semaphore pointer (at beginning of shared memory)
+	cb->server_cq_sem = (sem_t *)shmaddr;
+
+	// Setup notification queue pointer (after semaphore)
+	char *notif_queue_addr = shmaddr + sizeof(sem_t);
+	cb->server_notif_queue =
+		(struct msg_notification_queue *)notif_queue_addr;
+
+	log_info("Client connected to Event-Driven notification queue at 0x%lx",
+		 (unsigned long)cb->server_notif_queue);
 
 	return 0;
 
@@ -266,13 +291,13 @@ err1:
 }
 
 /**
- * @brief Set the shmem msgbuf ctx object
+ * @brief Set message buffer contexts 
  * 
- * @param mb_ctx 
- * @param shm_addr 
- * @param msgbuf_size 
- * @param msgbuf_cnt 
- * @param init_sem Initialize sem if 1.
+ * @param mb_ctx Message buffer contexts
+ * @param shm_addr Base shared memory address  
+ * @param msgbuf_size Size of each message buffer
+ * @param msgbuf_cnt Number of message buffers
+ * @param init_sem Initialize semaphore if 1
  */
 void set_shmem_msgbuf_ctx(struct shmem_msgbuf_ctx *mb_ctx, char *shm_addr,
 			  int msgbuf_size, int msgbuf_cnt, int init_sem)
@@ -281,10 +306,10 @@ void set_shmem_msgbuf_ctx(struct shmem_msgbuf_ctx *mb_ctx, char *shm_addr,
 	char *cb_p;
 	struct shmem_evt_flag *ef;
 
-	// Point msgbuf start.
+	// Point msgbuf start
 	cb_p = shm_addr;
 
-	// Point evt flag start.
+	// Point evt flag start (after message buffers)
 	ef = (struct shmem_evt_flag *)(shm_addr + 2 * msgbuf_size * msgbuf_cnt);
 
 	for (i = 0; i < msgbuf_cnt; i++) {
@@ -638,41 +663,6 @@ err1:
 	return ret;
 }
 
-// It checks whether there is a message arrived. Handle one if there exists.
-static int handle_arrived_msgs(struct shmem_ch_cb *cb, int client_id)
-{
-	int i, handled;
-	struct shmem_server_state *server;
-	struct shmem_msgbuf_ctx *mb_ctx;
-	struct shmem_client_state *client;
-
-	server = cb->server_state;
-	client = server->clients[client_id];
-
-	handled = 0;
-
-	// Profile message buffer scanning
-	PROF_START(scan_start);
-
-	// Check msgbuf flags to find out whether a message arrived.
-	for (i = 0; i < cb->msgbuf_cnt; i++) {
-		mb_ctx = &client->buf_ctxs[i];
-		if (atomic_load(&mb_ctx->evt->server_evt)) { // msg arrived.
-			log_debug(
-				"[msgbuf] Client %d has a message in msgbuf %d",
-				client_id, i);
-			handle_client_msg(cb, client, i);
-			// clear flag.
-			atomic_store(&mb_ctx->evt->server_evt, 0);
-			handled++;
-		}
-	}
-
-	PROF_END_UPDATE(scan_start, &g_server_prof.msgbuf_scan);
-
-	return handled;
-}
-
 static void *handle_event(void *arg)
 {
 	struct shmem_ch_cb *cb;
@@ -686,33 +676,65 @@ static void *handle_event(void *arg)
 	if (cb->on_connect)
 		cb->on_connect(cb->conn_arg);
 
+	rpc_assert(server->notif_queue);
+
 	while (1) {
 		pthread_testcancel();
 
 		// Producer will post sem.
 		rpc_sem_wait(server->cq_sem);
 
-		// Lookup client bitmap.
-		cur = 0;
-		next = 0;
-		handled_total = 0;
+		// Event-Driven Direct Notification: Process messages directly from queue
+		// This replaces O(n²) scanning with O(1) direct processing
+		struct msg_notification notification;
+		int processed_count = 0;
 
-		// Read only. No locking required.
-		while (bit_array_find_next_set_bit(server->client_bitmap, cur,
-						   &next)) {
-			log_debug("[Event handler] Client %d is registered.",
-				  next);
+		// Process all available notifications from the queue
+		while (msg_notification_queue_pop(server->notif_queue,
+						  &notification) == 0) {
+			// Profile message buffer scanning
+			PROF_START(scan_start);
 
-			// Handle incoming message.
-			handled = handle_arrived_msgs(cb, next);
-			handled_total += handled;
-			cur = next + 1;
+			int client_id = notification.client_id;
+			int buffer_id = notification.buffer_id;
+
+#ifdef RPC_VALIDATION
+			// Validate client_id
+			if (client_id < 0 ||
+			    client_id >= MAX_CLIENT_CONNECTION ||
+			    !server->clients[client_id]) {
+				log_error(
+					"Invalid client_id %d in notification. (buffer_id=%d)",
+					client_id, buffer_id);
+				assert(0);
+			}
+#endif
+			struct shmem_client_state *client =
+				server->clients[client_id];
+
+#ifdef RPC_VALIDATION
+			// Validate buffer_id
+			if (buffer_id < 0 || buffer_id >= cb->msgbuf_cnt) {
+				log_error("Invalid buffer_id %d for client %d",
+					  buffer_id, client_id);
+				assert(0);
+			}
+#endif
 			log_debug(
-				"[Event handler] Handled %d events of Client %d.",
-				handled, next);
+				"[Event-Driven] Processing message from Client %d Buffer %d",
+				client_id, buffer_id);
+
+			// Process the message directly
+			handle_client_msg(cb, client, buffer_id);
+
+			processed_count++;
+
+			PROF_END_UPDATE(scan_start, &g_server_prof.msgbuf_scan);
 		}
-		log_debug("[Event handler] Total %d events handled.",
-			  handled_total);
+
+		log_debug(
+			"[Event-Driven] Processed %d messages directly from notification queue",
+			processed_count);
 	}
 
 	if (cb->on_disconnect)
@@ -795,28 +817,52 @@ static void init_shmem_server(struct shmem_ch_cb *cb)
 	// atomic_init(&server->s_cb_id, 0);
 
 	server->cq_cb_id = SHMEM_CQ_CB_ID;
-	assert(server->cq_cb_id > MAX_CLIENT_CONNECTION);
+	rpc_assert(server->cq_cb_id > MAX_CLIENT_CONNECTION);
 
 	// Create CQ shmem for per server cq event thread.
 	server->cq_key = generate_shm_key(cb, server->cq_cb_id);
-	server->cq_shmem_id =
-		create_shm_seg(server->cq_key,
-			       sizeof(sem_t)); // Rounded up to PAGESIZE.
+
+	// Calculate size for semaphore + notification queue in shared memory
+	size_t cq_shm_size = sizeof(sem_t) + get_notification_queue_size();
+
+	server->cq_shmem_id = create_shm_seg(server->cq_key, cq_shm_size);
 	if (server->cq_shmem_id == -1) {
-		log_error("Getting client's shmem(shmget) failed.");
+		log_error("Getting server's CQ shmem(shmget) failed.");
 		goto err1;
 	}
 
 	server->cq_shmem_addr = attach_shm_seg(server->cq_shmem_id);
 	if (!server->cq_shmem_addr) {
-		log_error("Attaching server's shmem(shmat) failed.");
+		log_error("Attaching server's CQ shmem(shmat) failed.");
 		goto err2;
 	}
 
-	// Locate semaphore in the shared memory.
+	// Locate semaphore at the beginning of shared memory
 	server->cq_sem = (sem_t *)server->cq_shmem_addr;
 	pshared = 1;
 	sem_init(server->cq_sem, pshared, 0);
+
+	// Setup notification queue in shared memory (after semaphore)
+	char *notif_queue_addr = server->cq_shmem_addr + sizeof(sem_t);
+	server->notif_queue = (struct msg_notification_queue *)notif_queue_addr;
+
+	// Initialize notification queue structure in shared memory
+	// IMPORTANT: The order of initialization must match the struct definition in shmem.h
+	atomic_init(&server->notif_queue->head, 0);
+	atomic_init(&server->notif_queue->tail, 0);
+	server->notif_queue->capacity = MSG_NOTIFICATION_QUEUE_SIZE;
+	server->notif_queue->mask = MSG_NOTIFICATION_QUEUE_SIZE - 1;
+
+	// Initialize sequence numbers for all slots to 0
+	struct msg_notification *notifications =
+		get_notifications_array(server->notif_queue);
+	for (int i = 0; i < MSG_NOTIFICATION_QUEUE_SIZE; i++) {
+		atomic_init(&notifications[i].sequence, 0);
+	}
+
+	log_info(
+		"Initialized Event-Driven notification queue in shared memory at 0x%lx",
+		(unsigned long)server->notif_queue);
 
 	ret = pthread_create(&server->ehthread, NULL, handle_event, (void *)cb);
 	if (ret) {
@@ -854,6 +900,7 @@ err4:
 	pthread_cancel(server->ehthread);
 	pthread_join(server->ehthread, NULL);
 err3:
+	// Notification queue is in shared memory, will be cleaned up with CQ segment
 	detach_shm_seg(server->cq_shmem_addr);
 err2:
 	remove_shm_seg(server->cq_shmem_id);
@@ -866,6 +913,13 @@ static void destroy_shmem_server(struct shmem_server_state *server)
 	int server_cnt_before;
 	// TODO: To be implemented.
 	// TODO: Free some resources.
+
+	// Clean up notification queue (now in shared memory, no need to free)
+	if (server->notif_queue) {
+		log_info(
+			"Notification queue in shared memory will be cleaned up with CQ segment");
+		server->notif_queue = NULL;
+	}
 
 	// Free CQ channel.
 	server_cnt_before = atomic_fetch_sub(&g_server_cnt, 1);
@@ -945,6 +999,11 @@ struct shmem_ch_cb *init_shmem_ch(struct shmem_ch_attr *attr)
 			goto err2;
 		}
 
+		// Calculate client_id from shm_key for Event-Driven notification
+		cb->client_id =
+			get_cb_id_with_key(cb->shm_key, cb->shm_key_seed);
+		log_info("Client initialized with ID: %d", cb->client_id);
+
 		ret = attach_client_shmem(cb);
 		if (ret) {
 			log_error("attach client shmem failed.");
@@ -1013,4 +1072,188 @@ void destroy_shmem_client(struct shmem_ch_cb *cb)
 	}
 
 	// Note: The cb structure itself is freed by the RPC layer (destroy_rpc_client)
+}
+
+// ==================== Event-Driven Direct Notification Implementation ====================
+
+/**
+ * @brief Push a notification to the queue.
+ * This is a lock-free, multiple-producer safe implementation.
+ * Called by clients to notify the server of new messages. It uses a
+ * compare-and-swap (CAS) loop to atomically claim a slot in the queue.
+ *
+ * @param queue         Notification queue.
+ * @param client_id     Client ID that sent the message.
+ * @param buffer_id     Buffer ID containing the message.
+ * @return int          0 on success, -1 on error (e.g., queue full).
+ */
+int msg_notification_queue_push(struct msg_notification_queue *queue,
+				int client_id, int buffer_id)
+{
+	unsigned long long tail, head, next_tail;
+
+	if (!queue)
+		return -1;
+
+	log_info("[NOTIF_QUEUE] Pushing notification: Client %d Buffer %d",
+		 client_id, buffer_id);
+
+	// High-performance lock-free Multiple Producer implementation
+	// Optimized memory ordering for better performance while maintaining correctness
+	while (1) {
+		// Load current tail with relaxed ordering for better performance
+		tail = atomic_load_explicit(&queue->tail, memory_order_relaxed);
+
+		// Load current head with acquire ordering to see consumer updates
+		head = atomic_load_explicit(&queue->head, memory_order_acquire);
+
+		next_tail = tail + 1;
+
+		// Check if queue is full (tail is capacity ahead of head)
+		if (__builtin_expect(next_tail - head >= queue->capacity, 0)) {
+			log_warn(
+				"Notification queue is full! Consider increasing queue size.");
+			return -1; // Queue full
+		}
+
+		// Try to atomically claim this tail position with optimized ordering
+		// Success: acquire-release ensures proper synchronization
+		// Failure: relaxed is sufficient for retry
+		if (atomic_compare_exchange_weak_explicit(
+			    &queue->tail, &tail, next_tail,
+			    memory_order_acq_rel, // success: acquire-release
+			    memory_order_relaxed)) { // failure: relaxed for retry
+
+			// Successfully claimed slot[tail]
+			// Calculate slot index
+			uint32_t slot_index = tail & queue->mask;
+
+			struct msg_notification *notifications =
+				get_notifications_array(queue);
+
+			// Write data atomically with proper ordering
+			notifications[slot_index].client_id = client_id;
+			notifications[slot_index].buffer_id = buffer_id;
+
+			// Use sequence number to signal that the data is ready.
+			// This is essential for correctness in a multi-producer scenario.
+			uint64_t sequence_number =
+				(tail >> __builtin_ctzl(queue->capacity)) + 1;
+
+			// Store sequence number last with release ordering
+			// This ensures all data is visible before sequence becomes valid
+			atomic_store_explicit(
+				&notifications[slot_index].sequence,
+				sequence_number, memory_order_release);
+
+			log_debug(
+				"[NOTIF_QUEUE] Successfully pushed: Client %d Buffer %d to slot %u (head=%llu, tail=%llu->%llu, seq=%llu)",
+				client_id, buffer_id, slot_index, head, tail,
+				next_tail, sequence_number);
+
+			break; // Success, exit loop
+		}
+
+		// Exponential backoff on contention to reduce cache line bouncing
+		// This improves performance under high contention
+		static __thread int backoff_count = 0;
+		for (int i = 0; i < (1 << (backoff_count & 7)); i++) {
+			__builtin_ia32_pause(); // CPU hint for spin-wait loops
+		}
+		backoff_count++;
+	}
+
+	return 0;
+}
+
+/**
+ * @brief Pop a notification from the queue.
+ * This is a lock-free, single-consumer safe implementation.
+ * Called by the server to get the next message to process.
+ *
+ * @param queue         Notification queue.
+ * @param notification  Output parameter for the notification data.
+ * @return int          0 on success, -1 if the queue is empty or the next item is not ready.
+ */
+int msg_notification_queue_pop(struct msg_notification_queue *queue,
+			       struct msg_notification *notification)
+{
+	unsigned long long head, tail;
+
+	rpc_assert(queue);
+	rpc_assert(notification);
+
+	// Single Consumer (SC) implementation with optimized ordering
+	// Load current head with relaxed ordering (single consumer)
+	head = atomic_load_explicit(&queue->head, memory_order_relaxed);
+	// Load current tail with acquire ordering to see producer updates
+	tail = atomic_load_explicit(&queue->tail, memory_order_acquire);
+
+	// Check if queue is empty
+	if (__builtin_expect(head == tail, 0)) {
+		log_debug("[NOTIF_QUEUE] Queue is empty (head=%llu, tail=%llu)",
+			  head, tail);
+		return -1; // Queue empty
+	}
+
+	// Read notification data
+	struct msg_notification *notifications = get_notifications_array(queue);
+
+	// Calculate slot index
+	uint32_t slot_index = head & queue->mask;
+
+	// The sequence number indicates if the producer has finished writing.
+	// We must check it to prevent reading partially written data.
+	uint64_t expected_sequence =
+		(head >> __builtin_ctzl(queue->capacity)) + 1;
+
+	// Verify sequence number matches expected value with acquire ordering
+	uint64_t actual_sequence = atomic_load_explicit(
+		&notifications[slot_index].sequence, memory_order_acquire);
+
+	if (__builtin_expect(actual_sequence != expected_sequence, 0)) {
+		// This is not a fatal error. It's a normal condition in a racy,
+		// non-blocking queue where the consumer checks a slot that the
+		// producer has claimed but not yet finished writing to. The
+		// consumer will simply try again later.
+		log_debug(
+			"[NOTIF_QUEUE] Sequence mismatch at slot %u: expected=%llu, actual=%llu",
+			slot_index, expected_sequence, actual_sequence);
+		return -1; // Data not ready or corrupted
+	}
+
+	// Read validated data (data is guaranteed valid due to sequence check)
+	notification->client_id = notifications[slot_index].client_id;
+	notification->buffer_id = notifications[slot_index].buffer_id;
+	notification->sequence = actual_sequence; // Copy sequence for debugging
+
+	log_debug(
+		"[NOTIF_QUEUE] Popped notification: Client %d Buffer %d from slot %u (head=%llu->%llu, tail=%llu, seq=%llu)",
+		notification->client_id, notification->buffer_id, slot_index,
+		head, head + 1, tail, actual_sequence);
+
+	// Update head with release ordering to make our consumption visible to producers
+	atomic_store_explicit(&queue->head, head + 1, memory_order_release);
+
+	return 0;
+}
+
+/**
+ * @brief Check if notification queue is empty
+ * 
+ * @param queue Notification queue
+ * @return int 1 if empty, 0 if not empty, -1 on error
+ */
+int msg_notification_queue_is_empty(struct msg_notification_queue *queue)
+{
+	unsigned long long head, tail;
+
+	if (!queue)
+		return -1;
+
+	// Use acquire ordering to ensure we see the latest updates from producers and consumer
+	head = atomic_load_explicit(&queue->head, memory_order_acquire);
+	tail = atomic_load_explicit(&queue->tail, memory_order_acquire);
+
+	return (head == tail) ? 1 : 0;
 }

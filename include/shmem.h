@@ -13,15 +13,60 @@
 // An arbitrary id that does not overlap with clients'.
 #define SHMEM_CQ_CB_ID (MAX_CLIENT_CONNECTION + 1)
 
+// Event-Driven Direct Notification structures
+#define MSG_NOTIFICATION_QUEUE_SIZE 8192 // Power of 2 for efficient modulo
+
+/**
+ * @brief Message notification entry for direct event notification
+ */
+struct msg_notification {
+	int client_id; // Client that sent the message
+	int buffer_id; // Buffer ID containing the message
+	atomic_ullong
+		sequence; // Sequence number for lock-free validation - 64-bit to prevent overflow
+};
+
+/**
+ * @brief Lock-free MPSC (Multiple Producer Single Consumer) queue for message notifications
+ * Uses sequence numbers for safe multi-producer access without locks
+ */
+struct msg_notification_queue {
+	// struct msg_notification *notifications; // Ring buffer - REMOVED: calculated locally
+	atomic_ullong
+		head; // Consumer index (server reads) - 64-bit to prevent overflow
+	char _pad1[64 -
+		   sizeof(atomic_ullong)]; // Cache line padding to prevent false sharing
+	atomic_ullong
+		tail; // Producer index (clients write) - 64-bit to prevent overflow
+	char _pad2[64 - sizeof(atomic_ullong)]; // Cache line padding
+	uint32_t capacity; // Queue capacity (power of 2)
+	uint32_t mask; // Capacity - 1 (for efficient modulo)
+	char padding[8]; // Ensure alignment for the notifications array
+};
+
+/**
+ * @brief Safely get notifications array from queue structure
+ * This calculates the array address locally to avoid virtual address conflicts
+ * between different processes
+ * 
+ * @param queue Pointer to notification queue in shared memory
+ * @return struct msg_notification* Pointer to notifications array
+ */
+static inline struct msg_notification *
+get_notifications_array(struct msg_notification_queue *queue)
+{
+	return (struct msg_notification
+			*)((char *)queue +
+			   sizeof(struct msg_notification_queue));
+}
+
 /**
  * @brief Flag to notify a message arrival event.
  * Let's make server directly wakes up client's thread for better latency.
  */
 struct shmem_evt_flag {
-	// uint64_t client_evt;
 	sem_t client_sem;
-	char pad[32]; // Make server_evt aligned in a 64-bit cache line.
-	atomic_ulong server_evt;
+	// char pad[32]; // Make the following field aligned in a 64-bit cache line.
 };
 
 // It is stored in the shmem seg.
@@ -74,6 +119,10 @@ struct shmem_server_state {
 	sem_t *cq_sem; // It is allocated in shared memory.
 	struct shmem_client_state
 		*clients[MAX_CLIENT_CONNECTION]; // array of pointers.
+
+	// Event-Driven Direct Notification
+	struct msg_notification_queue
+		*notif_queue; // High-performance message notification queue
 };
 
 struct shmem_msgbuf_ctx {
@@ -112,6 +161,7 @@ struct shmem_ch_cb {
 	// for client use.
 	// int cb_id; // Client's cb_id;
 	int client_cm_fd; // Client's connection management socket fd.
+	int client_id; // Client's ID for Event-Driven notification
 	key_t shm_key;
 	uint64_t shm_size;
 	int shmem_id;
@@ -121,6 +171,10 @@ struct shmem_ch_cb {
 	char *cq_shmem_addr;
 	sem_t *server_cq_sem;
 	struct shmem_msgbuf_ctx *buf_ctxs; // msgbuf contexts.
+
+	// Event-Driven Direct Notification for clients
+	struct msg_notification_queue *
+		server_notif_queue; // Pointer to server's notification queue in shared memory
 
 	// for server use.
 	struct shmem_server_state
@@ -140,4 +194,12 @@ void deregister_client_with_sockfd(struct shmem_ch_cb *server_cb,
 void deregister_client_with_key(struct shmem_ch_cb *server_cb,
 				key_t client_key);
 void destroy_shmem_client(struct shmem_ch_cb *cb);
+
+// Event-Driven Direct Notification functions
+int msg_notification_queue_push(struct msg_notification_queue *queue,
+				int client_id, int buffer_id);
+int msg_notification_queue_pop(struct msg_notification_queue *queue,
+			       struct msg_notification *notification);
+int msg_notification_queue_is_empty(struct msg_notification_queue *queue);
+
 #endif

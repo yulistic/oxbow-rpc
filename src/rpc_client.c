@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <sys/syscall.h>
 #include "global.h"
 #include "rpc.h"
 #include "rdma.h"
@@ -12,6 +13,7 @@
 // Overwrite global print config.
 // #define ENABLE_PRINT 1
 #include "log.h"
+#include <unistd.h>
 
 /**
  * @brief Callback function of RPC layer. It frees RPC layer resources.
@@ -70,10 +72,12 @@ static int do_wait_rpc_shmem_response(struct rpc_ch_info *rpc_ch, int msgbuf_id,
 			return ret;
 	} else {
 		// Wait for server's post.
-		log_debug("Waiting for the server's response. Sem-addr=0x%lx",
-			  sem);
+		log_debug(
+			"(tid=%ld client_id=%d) Waiting for the server's response. Sem-addr=0x%lx",
+			get_tid(), cb->client_id, sem);
 		rpc_sem_wait(sem);
-		log_debug("Resume.");
+		log_debug("(tid=%ld client_id=%d) Resume.", get_tid(),
+			  cb->client_id);
 	}
 
 	PROF_END_UPDATE(wait_start, &g_client_prof.response_wait);

@@ -217,7 +217,15 @@ int handle_epollin(struct shmem_ch_cb *cb, int client_fd,
 				      (struct shmem_cm_request *)buf_in,
 				      (struct shmem_cm_response *)buf_out);
 
-			// Send response.
+			// For DEREGISTER, don't send response to avoid SIGPIPE
+			// Client closes socket immediately after sending DEREGISTER
+			if (buf_in->op == DEREGISTER) {
+				log_info(
+					"Client disconnect request processed, no response sent");
+				break;
+			}
+
+			// Send response for other operations.
 			log_info("Sending CM message to client:");
 			print_shmem_cm_response(buf_out);
 
