@@ -667,8 +667,6 @@ static void *handle_event(void *arg)
 {
 	struct shmem_ch_cb *cb;
 	struct shmem_server_state *server;
-	bit_index_t cur, next;
-	int handled, handled_total;
 
 	cb = (struct shmem_ch_cb *)arg;
 	server = cb->server_state;
@@ -894,6 +892,10 @@ static void init_shmem_server(struct shmem_ch_cb *cb)
 	server_cnt = atomic_fetch_add(&g_server_cnt, 1);
 	log_info("Server %d created. server_cnt=%d", server->server_id,
 		 server_cnt);
+#ifdef RPC_VALIDATION
+	log_warn(
+		"RPC_VALIDATION is enabled. Turn it off for better performance.");
+#endif
 
 	return;
 err4:
