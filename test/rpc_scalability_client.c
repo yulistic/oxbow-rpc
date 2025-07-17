@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <sys/wait.h>
+#include <assert.h>
 #include "test_global.h"
 #include "log.h"
 #include "rpc.h"
@@ -15,6 +16,10 @@
 #include "profiling.h"
 
 // Test configuration
+/* Clients do not wait for responses. */
+// TODO: RDMA does not support it yet.
+#define OPEN_LOOP // Comment this out to disable it.
+
 #define MESSAGES_PER_CLIENT 1000
 #define MAX_CLIENTS 20
 #define WARMUP_MESSAGES 100
@@ -31,11 +36,22 @@ atomic_long total_messages_sent;
 atomic_long total_messages_received;
 atomic_long total_response_time_ns;
 
+#ifdef OPEN_LOOP
+// For freeing msgbuf.
+threadpool msg_async_thpool;
+
+struct free_th_arg {
+	struct rpc_ch_info *rpc_cli_ch;
+	int msgbuf_id;
+};
+#endif
+
 struct client_stats {
 	int client_id;
 	long messages_sent;
 	long messages_received;
 	double avg_response_time_ms;
+	double wait_time_ms; // for open loop.
 	double throughput_sent;
 	double throughput_received;
 };
@@ -84,6 +100,32 @@ void client_shmem_msg_handler(void *arg)
 	atomic_fetch_add(&total_messages_received, 1);
 }
 
+#ifdef OPEN_LOOP
+/**
+ * @brief There are always responses and they should be handled. A message
+ * buffer is freed during this process.
+ * 
+ * @param arg 
+ */
+static void free_msgbuf(void *arg)
+{
+	struct free_th_arg *ft_arg;
+	int ret;
+
+	ft_arg = (struct free_th_arg *)arg;
+	ret = trywait_rpc_shmem_response(ft_arg->rpc_cli_ch, ft_arg->msgbuf_id,
+					 1);
+	if (ret < 0) {
+		// Reschedule it.
+		thpool_add_work(msg_async_thpool, free_msgbuf, (void *)ft_arg);
+		return;
+	}
+
+	// msgbuf freed.
+	free(arg);
+}
+#endif
+
 void *client_thread_func(void *arg)
 {
 	struct client_thread_param *param = (struct client_thread_param *)arg;
@@ -92,6 +134,7 @@ void *client_thread_func(void *arg)
 	int i;
 	struct timespec start_time, end_time;
 	long total_latency_ns = 0;
+	long wait_latency_ns = 0;
 	int messages_sent = 0;
 
 	log_info("Client %d thread started", param->client_id);
@@ -128,9 +171,13 @@ void *client_thread_func(void *arg)
 			send_rpc_msg_to_server(&req_param);
 			atomic_fetch_add(&total_messages_sent, 1);
 			messages_sent++;
-
+#ifdef OPEN_LOOP
+			// Not supported yet.
+			assert(0);
+#else
 			// Wait for response
 			sem_wait(&sem);
+#endif
 
 			clock_gettime(CLOCK_MONOTONIC, &msg_end);
 			long latency_ns = (msg_end.tv_sec - msg_start.tv_sec) *
@@ -150,14 +197,42 @@ void *client_thread_func(void *arg)
 			atomic_fetch_add(&total_messages_sent, 1);
 			messages_sent++;
 
+#ifdef OPEN_LOOP
+			// Don't wait for the response.
+			if (i < param->num_messages - 1) {
+				struct free_th_arg *ft_arg;
+
+				ft_arg = calloc(1, sizeof(struct free_th_arg));
+				ft_arg->rpc_cli_ch = rpc_ch;
+				ft_arg->msgbuf_id = msgbuf_id;
+
+				// Free msgbuf in another thread.
+				thpool_add_work(msg_async_thpool, free_msgbuf,
+						(void *)ft_arg);
+			}
+#else
 			// Wait for response
 			wait_rpc_shmem_response(rpc_ch, msgbuf_id, 1);
+#endif
 
 			clock_gettime(CLOCK_MONOTONIC, &msg_end);
 			long latency_ns = (msg_end.tv_sec - msg_start.tv_sec) *
 						  1000000000L +
 					  (msg_end.tv_nsec - msg_start.tv_nsec);
 			total_latency_ns += latency_ns;
+#ifdef OPEN_LOOP
+			// Wait for the last message.
+			if (i == param->num_messages - 1) {
+				clock_gettime(CLOCK_MONOTONIC, &msg_start);
+				wait_rpc_shmem_response(rpc_ch, msgbuf_id, 1);
+				clock_gettime(CLOCK_MONOTONIC, &msg_end);
+
+				wait_latency_ns =
+					(msg_end.tv_sec - msg_start.tv_sec) *
+						1000000000L +
+					(msg_end.tv_nsec - msg_start.tv_nsec);
+			}
+#endif
 		} break;
 		}
 
@@ -179,14 +254,26 @@ void *client_thread_func(void *arg)
 		messages_sent; // Assuming all messages get responses
 	param->stats->avg_response_time_ms =
 		(double)total_latency_ns / messages_sent / 1000000.0;
+#ifdef OPEN_LOOP
+	param->stats->wait_time_ms = wait_latency_ns / 1000000.0;
+#else
+	param->stats->wait_time_ms = 0.0;
+#endif
 	param->stats->throughput_sent = messages_sent / elapsed_time;
 	param->stats->throughput_received = messages_sent / elapsed_time;
 	pthread_mutex_unlock(param->stats_mutex);
 
+#ifdef OPEN_LOOP
+	log_info(
+		"Client %d completed: %d messages, %.2f msgs/sec, %.2f ms avg issue latency, %.2f ms wait time",
+		param->client_id, messages_sent, param->stats->throughput_sent,
+		param->stats->avg_response_time_ms, param->stats->wait_time_ms);
+#else
 	log_info(
 		"Client %d completed: %d messages, %.2f msgs/sec, %.2f ms avg latency",
 		param->client_id, messages_sent, param->stats->throughput_sent,
 		param->stats->avg_response_time_ms);
+#endif
 
 	return NULL;
 }
@@ -414,6 +501,10 @@ int main(int argc, char **argv)
 		       start_clients, end_clients, step);
 		return 1;
 	}
+
+#ifdef OPEN_LOOP
+	msg_async_thpool = thpool_init(2, "msg_async");
+#endif
 
 	log_info("Starting RPC scalability test client...");
 	log_info(
