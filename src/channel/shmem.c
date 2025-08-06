@@ -1160,7 +1160,16 @@ int msg_notification_queue_push(struct msg_notification_queue *queue,
 		// This improves performance under high contention
 		static __thread int backoff_count = 0;
 		for (int i = 0; i < (1 << (backoff_count & 7)); i++) {
-			__builtin_ia32_pause(); // CPU hint for spin-wait loops
+#if defined(__x86_64__) || defined(__i386__)
+			__builtin_ia32_pause(); // CPU hint for spin-wait loops on x86
+#elif defined(__aarch64__) || defined(__arm__)
+			__asm__ __volatile__(
+				"yield" ::
+					: "memory"); // ARM equivalent
+#else
+			// Fallback for other architectures - just a memory barrier
+			__asm__ __volatile__("" ::: "memory");
+#endif
 		}
 		backoff_count++;
 	}
