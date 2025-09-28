@@ -13,6 +13,7 @@ uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch)
 {
 	uint64_t bit_id;
 	int ret;
+	uint32_t cnt = 0;
 
 	ret = 0;
 	while (1) {
@@ -26,8 +27,11 @@ uint64_t alloc_msgbuf_id(struct rpc_ch_info *rpc_ch)
 		if (ret)
 			break;
 		else {
-			log_warn("Failed to alloc a msgbuf id. (sleep 1 sec)");
-			// sleep(1);
+			cnt++;
+			if (cnt % 10000000 == 0)
+				log_warn(
+					"Failed to alloc a msgbuf id. (try_cnt=%u)",
+					cnt);
 		}
 	}
 
