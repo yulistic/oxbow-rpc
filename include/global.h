@@ -8,10 +8,11 @@
 #define ENABLE_PRINT 0
 #endif
 
-#define SEMA_MODE 0 // 0: always sleep, 1: hybrid polling, 2: always busywait.
+// 0: always sleep, 1: hybrid polling, 2: always busywait.
+#define RPC_SEMA_MODE 0
 
-#define ENABLE_ASSERT
-#ifdef ENABLE_ASSERT
+#define RPC_ENABLE_ASSERT
+#ifdef RPC_ENABLE_ASSERT
 #define rpc_assert(cond) assert(cond)
 #else
 #define rpc_assert(cond)

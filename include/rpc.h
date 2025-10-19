@@ -134,14 +134,14 @@ sleep_and_wait:
 	sem_wait(sem);
 }
 
-#if (SEMA_MODE == 0) // Always sleep.
+#if (RPC_SEMA_MODE == 0) // Always sleep.
 
 static inline void rpc_sem_wait(sem_t *sem)
 {
 	sem_wait(sem);
 }
 
-#elif (SEMA_MODE == 1) // Hybrid polling.
+#elif (RPC_SEMA_MODE == 1) // Hybrid polling.
 
 #define BUSYWAIT_TIME_MICROSEC 1000 // 1 millisecond.
 
@@ -150,7 +150,7 @@ static inline void rpc_sem_wait(sem_t *sem)
 	busywait_sem_wait(sem, BUSYWAIT_TIME_MICROSEC);
 }
 
-#elif (SEMA_MODE == 2) // Always busywait.
+#elif (RPC_SEMA_MODE == 2) // Always busywait.
 
 static inline void rpc_sem_wait(sem_t *sem)
 {
@@ -158,7 +158,7 @@ static inline void rpc_sem_wait(sem_t *sem)
 }
 
 #else
-#error "Invalid SEMA_MODE value. Must be 0, 1, or 2."
+#error "Invalid RPC_SEMA_MODE value. Must be 0, 1, or 2."
 #endif
 
 /**
