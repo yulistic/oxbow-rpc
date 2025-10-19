@@ -18,7 +18,7 @@
 #endif
 
 /* Some validation. */
-#define RPC_VALIDATION
+// #define RPC_VALIDATION
 
 #define get_tid() syscall(__NR_gettid)
 
