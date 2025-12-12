@@ -66,4 +66,4 @@ oxbow_rpc_lib = shared_library('oxbow_rpc',
                           # link_args : ['-Wl,-rpath=' + rdma_lib_dir],
                           )
 
-subdir('test')
+#subdir('test')
