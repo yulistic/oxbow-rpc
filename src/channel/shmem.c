@@ -99,16 +99,51 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 	// Event-Driven Direct Notification: Add to server's notification queue
 	// This eliminates the need for O(n²) scanning on the server side
 	rpc_assert(cb->server_notif_queue);
-	int ret = msg_notification_queue_push(cb->server_notif_queue,
-					      cb->client_id, msgbuf_id);
-	if (ret != 0) {
-		log_warn(
-			"Failed to add notification to queue for client %d buffer %d",
-			cb->client_id, msgbuf_id);
+	int ret;
+	unsigned long full_spins = 0;
+	while ((ret = msg_notification_queue_push(cb->server_notif_queue,
+						  cb->client_id,
+						  msgbuf_id)) != 0) {
+		/* Queue is full: drop-on-full would silently lose a message
+		 * and leave the requesting thread blocked on its response
+		 * semaphore forever (the server never sees the message, so
+		 * it never posts). Wake the consumer (in case it's sleeping
+		 * on cq_sem) and retry with a short backoff. */
+		sem_post(cb->server_cq_sem);
+		if ((full_spins & 0xfff) == 0) {
+			fprintf(stderr,
+				"[CLI_SEND] queue full pid=%d cid=%d "
+				"mid=%d spin=%lu\n",
+				getpid(), cb->client_id, msgbuf_id,
+				full_spins);
+			fflush(stderr);
+		}
+		full_spins++;
+		struct timespec ts = { 0, 1000 * 1000 }; /* 1 ms */
+		nanosleep(&ts, NULL);
 	}
 
-	// log_info("Sending SHMEM msg: seqn=%lu rpc_ch_addr=%lx data=\"%s\"",
-	// 	 seqn, (uint64_t)rpc_ch, msg->data);
+	/* Debug: capture tail/head + sem value right after push, before
+	 * sem_post. Trace every 1000th send on this client to limit volume. */
+	{
+		static __thread unsigned long long snd_cnt;
+		snd_cnt++;
+		if ((snd_cnt & 0x3ff) == 0) {
+			unsigned long long head = atomic_load_explicit(
+				&cb->server_notif_queue->head,
+				memory_order_relaxed);
+			unsigned long long tail = atomic_load_explicit(
+				&cb->server_notif_queue->tail,
+				memory_order_relaxed);
+			int sv = -1;
+			sem_getvalue(cb->server_cq_sem, &sv);
+			fprintf(stderr,
+				"[CLI_SEND] pid=%d mid=%d push_ret=%d "
+				"head=%llu tail=%llu sem_before=%d\n",
+				getpid(), msgbuf_id, ret, head, tail, sv);
+			fflush(stderr);
+		}
+	}
 
 	// Post global sem to notify server an event arrived.
 	sem_post(cb->server_cq_sem);
@@ -663,6 +698,48 @@ err1:
 	return ret;
 }
 
+static atomic_ullong g_dbg_wakes;
+static atomic_ullong g_dbg_processed;
+static atomic_ullong g_dbg_empty_wakes;
+
+static void *handle_event_watchdog(void *arg)
+{
+	struct shmem_server_state *server = arg;
+	struct timespec ts = { .tv_sec = 3, .tv_nsec = 0 };
+	unsigned long long prev_processed = 0;
+	int tick = 0;
+	fprintf(stderr, "[RPC_WDT] started server=%p\n", server);
+	fflush(stderr);
+	while (1) {
+		nanosleep(&ts, NULL);
+		tick++;
+		unsigned long long wakes = atomic_load(&g_dbg_wakes);
+		unsigned long long processed =
+			atomic_load(&g_dbg_processed);
+		unsigned long long empty =
+			atomic_load(&g_dbg_empty_wakes);
+		unsigned long long head = atomic_load_explicit(
+			&server->notif_queue->head,
+			memory_order_relaxed);
+		unsigned long long tail = atomic_load_explicit(
+			&server->notif_queue->tail,
+			memory_order_relaxed);
+		int sem_val = -1;
+		sem_getvalue(server->cq_sem, &sem_val);
+		int stalled = (processed == prev_processed) &&
+			      (tail != head || sem_val > 0);
+		fprintf(stderr,
+			"[RPC_WDT] t=%d w=%llu p=%llu e=%llu "
+			"head=%llu tail=%llu depth=%llu sem=%d%s\n",
+			tick, wakes, processed, empty, head, tail,
+			tail - head, sem_val,
+			stalled ? " STALLED" : "");
+		fflush(stderr);
+		prev_processed = processed;
+	}
+	return NULL;
+}
+
 static void *handle_event(void *arg)
 {
 	struct shmem_ch_cb *cb;
@@ -676,11 +753,23 @@ static void *handle_event(void *arg)
 
 	rpc_assert(server->notif_queue);
 
+	{
+		static pthread_t wdt;
+		static int wdt_started;
+		if (!wdt_started) {
+			wdt_started = 1;
+			pthread_create(&wdt, NULL, handle_event_watchdog,
+				       server);
+			pthread_detach(wdt);
+		}
+	}
+
 	while (1) {
 		pthread_testcancel();
 
 		// Producer will post sem.
 		rpc_sem_wait(server->cq_sem);
+		atomic_fetch_add(&g_dbg_wakes, 1);
 
 		// Event-Driven Direct Notification: Process messages directly from queue
 		// This replaces O(n²) scanning with O(1) direct processing
@@ -726,9 +815,13 @@ static void *handle_event(void *arg)
 			handle_client_msg(cb, client, buffer_id);
 
 			processed_count++;
+			atomic_fetch_add(&g_dbg_processed, 1);
 
 			PROF_END_UPDATE(scan_start, &g_server_prof.msgbuf_scan);
 		}
+
+		if (processed_count == 0)
+			atomic_fetch_add(&g_dbg_empty_wakes, 1);
 
 		log_debug(
 			"[Event-Driven] Processed %d messages directly from notification queue",
