@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <semaphore.h>
 #include <stdatomic.h>
+#include <pthread.h>
 #include "thpool.h"
 
 /*
@@ -108,6 +109,10 @@ struct rdma_ch_cb {
 	void (*rpc_msg_handler_cb)(void *rpc_pa); // rpc layer callback.
 	void (*user_msg_handler_cb)(void *param); // user's msg handler callback.
 	threadpool msg_handler_thpool; // threadpool to execute msg handler fn.
+	pthread_mutex_t pending_lock;
+	pthread_cond_t pending_cond;
+	uint32_t pending_handlers;
+	int closing;
 
 	enum rdma_ch_state state; /* used for cond/signalling */
 	sem_t sem;

@@ -28,6 +28,41 @@
 // TODO: to be deleted.
 #define RPING_MSG_FMT "rdma-ping-%d: "
 
+struct rdma_handler_work {
+	struct rdma_ch_cb *cb;
+	struct rpc_msg_handler_param *rpc_param;
+};
+
+static void rdma_handler_done(struct rdma_ch_cb *cb)
+{
+	pthread_mutex_lock(&cb->pending_lock);
+	if (cb->pending_handlers > 0)
+		cb->pending_handlers--;
+	if (cb->closing && cb->pending_handlers == 0)
+		pthread_cond_signal(&cb->pending_cond);
+	pthread_mutex_unlock(&cb->pending_lock);
+}
+
+static void rdma_wait_handlers_drained(struct rdma_ch_cb *cb)
+{
+	pthread_mutex_lock(&cb->pending_lock);
+	cb->closing = 1;
+	while (cb->pending_handlers > 0)
+		pthread_cond_wait(&cb->pending_cond, &cb->pending_lock);
+	pthread_mutex_unlock(&cb->pending_lock);
+}
+
+static void rdma_msg_handler_wrapper(void *arg)
+{
+	struct rdma_handler_work *work = arg;
+	struct rdma_ch_cb *cb = work->cb;
+	struct rpc_msg_handler_param *rpc_param = work->rpc_param;
+
+	free(work);
+	cb->rpc_msg_handler_cb(rpc_param);
+	rdma_handler_done(cb);
+}
+
 struct rdma_event_channel *create_first_event_channel(void)
 {
 	struct rdma_event_channel *channel;
@@ -198,10 +233,16 @@ static struct rdma_ch_cb *clone_cb(struct rdma_ch_cb *listening_cb)
 
 	*cb = *listening_cb; // shallow copy.
 	cb->child_cm_id->context = cb;
+	pthread_mutex_init(&cb->pending_lock, NULL);
+	pthread_cond_init(&cb->pending_cond, NULL);
+	cb->pending_handlers = 0;
+	cb->closing = 0;
 
 	// Alloc new buf_ctxs.
 	cb->buf_ctxs = calloc(cb->msgbuf_cnt, sizeof(struct msgbuf_ctx));
 	if (!cb->buf_ctxs) {
+		pthread_cond_destroy(&cb->pending_cond);
+		pthread_mutex_destroy(&cb->pending_lock);
 		free(cb);
 		return NULL;
 	}
@@ -500,6 +541,7 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 	struct rpc_msg_handler_param *rpc_param;
 	struct msg_handler_param *param;
 	struct rpc_msg *msg;
+	struct rdma_handler_work *work;
 	int msgbuf_id;
 	int ret;
 
@@ -559,9 +601,30 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 		msgbuf_id, msg->header.seqn, msg->data,
 		(uint64_t)rpc_param->client_rpc_ch, (uint64_t)msg->header.sem);
 
+	work = calloc(1, sizeof *work);
+	if (!work) {
+		ret = -ENOMEM;
+		goto err4;
+	}
+	work->cb = cb;
+	work->rpc_param = rpc_param;
+
+	pthread_mutex_lock(&cb->pending_lock);
+	if (cb->closing || cb->state == DISCONNECTED) {
+		pthread_mutex_unlock(&cb->pending_lock);
+		ret = 0;
+		goto err5;
+	}
+	cb->pending_handlers++;
+	pthread_mutex_unlock(&cb->pending_lock);
+
 	// Execute RPC callback function in a worker thread.
-	thpool_add_work(cb->msg_handler_thpool, cb->rpc_msg_handler_cb,
-			(void *)rpc_param);
+	ret = thpool_add_work(cb->msg_handler_thpool, rdma_msg_handler_wrapper,
+			      (void *)work);
+	if (ret < 0) {
+		rdma_handler_done(cb);
+		goto err5;
+	}
 
 	// cb->remote_rkey = cb->recv_buf.rkey;
 	// be32toh(cb->remote_rkey);
@@ -580,6 +643,10 @@ static int receive_msg(struct rdma_ch_cb *cb, struct ibv_wc *wc)
 		cb->state = WORKING;
 
 	return 0;
+err5:
+	free(work);
+err4:
+	free(msg);
 err3:
 	free(param);
 err2:
@@ -754,6 +821,8 @@ static void free_cb(struct rdma_ch_cb *cb)
 {
 	log_debug("free cb->buf_ctxs=%lx", cb->buf_ctxs);
 	free(cb->buf_ctxs);
+	pthread_cond_destroy(&cb->pending_cond);
+	pthread_mutex_destroy(&cb->pending_lock);
 	log_debug("free cb=%lx", cb);
 	free(cb);
 }
@@ -813,6 +882,8 @@ static void *server_thread(void *arg)
 	// pthread_cancel(cb->cqthread);
 	pthread_join(cb->cqthread, NULL);
 
+	rdma_wait_handlers_drained(cb);
+
 	// Disconnect callback.
 	if (cb->on_disconnect)
 		cb->on_disconnect(cb);
@@ -826,6 +897,7 @@ static void *server_thread(void *arg)
 err3:
 	pthread_cancel(cb->cqthread);
 	pthread_join(cb->cqthread, NULL);
+	rdma_wait_handlers_drained(cb);
 err2:
 	free_buffers(cb);
 err1:
@@ -990,7 +1062,13 @@ int send_rdma_msg(struct rdma_ch_cb *cb, void *rpc_ch_addr, char *data,
 	uint64_t new_seqn;
 	// uint64_t data_size, remains;
 
-	if (msgbuf_id >= cb->msgbuf_cnt) {
+	if (cb->closing || cb->state == DISCONNECTED) {
+		log_warn("Skip RDMA send on closing channel. msgbuf_id=%d",
+			 msgbuf_id);
+		return 0;
+	}
+
+	if (msgbuf_id < 0 || msgbuf_id >= cb->msgbuf_cnt) {
 		log_error(
 			"msg buffer id(%d) exceeds total msg buffer count(%d).",
 			msgbuf_id, cb->msgbuf_cnt);
@@ -1149,6 +1227,8 @@ struct rdma_ch_cb *init_rdma_ch(struct rdma_ch_attr *attr)
 	cb->conn_arg = attr->conn_arg;
 	cb->on_disconnect = attr->on_disconnect;
 	cb->disconn_arg = attr->disconn_arg;
+	pthread_mutex_init(&cb->pending_lock, NULL);
+	pthread_cond_init(&cb->pending_cond, NULL);
 
 	cb->buf_ctxs = calloc(cb->msgbuf_cnt, sizeof(struct msgbuf_ctx));
 	if (!cb->buf_ctxs) {
@@ -1221,6 +1301,8 @@ out2:
 out3:
 	free(cb->buf_ctxs);
 out4:
+	pthread_cond_destroy(&cb->pending_cond);
+	pthread_mutex_destroy(&cb->pending_lock);
 	free(cb);
 out5:
 	printf("init_rdma_ch failed. ret=%d\n", ret);
@@ -1247,5 +1329,7 @@ void destroy_rdma_client(struct rdma_ch_cb *cb)
 	rdma_destroy_id(cb->cm_id);
 	rdma_destroy_event_channel(cb->cm_channel);
 	free(cb->buf_ctxs);
+	pthread_cond_destroy(&cb->pending_cond);
+	pthread_mutex_destroy(&cb->pending_lock);
 	free(cb);
 }
