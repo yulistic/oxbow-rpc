@@ -33,6 +33,21 @@ struct rdma_handler_work {
 	struct rpc_msg_handler_param *rpc_param;
 };
 
+static void free_rpc_msg_handler_param(struct rpc_msg_handler_param *rpc_param)
+{
+	struct msg_handler_param *param;
+
+	if (!rpc_param)
+		return;
+
+	param = rpc_param->param;
+	if (param) {
+		free(param->msg);
+		free(param);
+	}
+	free(rpc_param);
+}
+
 static void rdma_handler_done(struct rdma_ch_cb *cb)
 {
 	pthread_mutex_lock(&cb->pending_lock);
@@ -59,6 +74,12 @@ static void rdma_msg_handler_wrapper(void *arg)
 	struct rpc_msg_handler_param *rpc_param = work->rpc_param;
 
 	free(work);
+	if (cb->closing || cb->state == DISCONNECTED || cb->state == ERROR) {
+		free_rpc_msg_handler_param(rpc_param);
+		rdma_handler_done(cb);
+		return;
+	}
+
 	cb->rpc_msg_handler_cb(rpc_param);
 	rdma_handler_done(cb);
 }
@@ -786,8 +807,6 @@ static void free_buffers(struct rdma_ch_cb *cb)
 {
 	int i;
 	struct msgbuf_ctx *mb_ctx;
-
-	log_debug("free_buffers called on cb %p", cb);
 
 	for (i = 0; i < cb->msgbuf_cnt; i++) {
 		mb_ctx = &cb->buf_ctxs[i];
