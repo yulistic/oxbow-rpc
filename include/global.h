@@ -9,7 +9,7 @@
 #endif
 
 // 0: always sleep, 1: hybrid polling, 2: always busywait.
-#define RPC_SEMA_MODE 0
+#define RPC_SEMA_MODE 1
 
 #define RPC_ENABLE_ASSERT
 #ifdef RPC_ENABLE_ASSERT

@@ -110,42 +110,11 @@ int send_shmem_msg(struct shmem_ch_cb *cb, struct rpc_ch_info *rpc_ch,
 		 * it never posts). Wake the consumer (in case it's sleeping
 		 * on cq_sem) and retry with a short backoff. */
 		sem_post(cb->server_cq_sem);
-		if ((full_spins & 0xfff) == 0) {
-			fprintf(stderr,
-				"[CLI_SEND] queue full pid=%d cid=%d "
-				"mid=%d spin=%lu\n",
-				getpid(), cb->client_id, msgbuf_id,
-				full_spins);
-			fflush(stderr);
-		}
-		full_spins++;
+		(void)full_spins++;
 		struct timespec ts = { 0, 1000 * 1000 }; /* 1 ms */
 		nanosleep(&ts, NULL);
 	}
 
-	/* Debug: capture tail/head + sem value right after push, before
-	 * sem_post. Trace every 1000th send on this client to limit volume. */
-	{
-		static __thread unsigned long long snd_cnt;
-		snd_cnt++;
-		if ((snd_cnt & 0x3ff) == 0) {
-			unsigned long long head = atomic_load_explicit(
-				&cb->server_notif_queue->head,
-				memory_order_relaxed);
-			unsigned long long tail = atomic_load_explicit(
-				&cb->server_notif_queue->tail,
-				memory_order_relaxed);
-			int sv = -1;
-			sem_getvalue(cb->server_cq_sem, &sv);
-			fprintf(stderr,
-				"[CLI_SEND] pid=%d mid=%d push_ret=%d "
-				"head=%llu tail=%llu sem_before=%d\n",
-				getpid(), msgbuf_id, ret, head, tail, sv);
-			fflush(stderr);
-		}
-	}
-
-	// Post global sem to notify server an event arrived.
 	sem_post(cb->server_cq_sem);
 
 	return cb->msgbuf_size;
